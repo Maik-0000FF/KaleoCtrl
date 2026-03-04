@@ -1,0 +1,48 @@
+{
+  "language": "de",
+
+  "modes": {
+    "desktop": {
+      "name": "desktop",
+      "description": "System- und Fenstersteuerung, Aktivierungswoerter direkt aktiv"
+    },
+    "dictation": {
+      "name": "diktat",
+      "description": "Speech-to-Text, nur globales Praefix loest Befehle aus"
+    },
+    "terminal": {
+      "name": "terminal",
+      "description": "Sprachbefehle werden an Terminal gesendet"
+    },
+    "sleep": {
+      "name": "schlaf",
+      "description": "KaleoCtrl pausiert, hoert nur auf Aufweck-Befehl"
+    }
+  },
+
+  "mode_switch": "modus",
+  "wake_phrase": "aufwachen",
+  "sleep_phrase": "schlaf",
+
+  "commands": {
+    "open": "oeffne",
+    "close": "schliesse",
+    "switch": "wechsel",
+    "minimize": "minimiere",
+    "maximize": "maximiere",
+    "fullscreen": "vollbild",
+    "stop": "stopp",
+    "undo": "rueckgaengig"
+  },
+
+  "dictation": {
+    "new_line": "neue zeile",
+    "new_paragraph": "neuer absatz",
+    "delete_word": "loesche wort",
+    "delete_sentence": "loesche satz",
+    "select_all": "alles markieren",
+    "copy": "kopiere",
+    "paste": "einfuegen",
+    "cut": "ausschneiden"
+  }
+}

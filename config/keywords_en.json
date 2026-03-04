@@ -1,0 +1,48 @@
+{
+  "language": "en",
+
+  "modes": {
+    "desktop": {
+      "name": "desktop",
+      "description": "System and window control, keywords active without prefix"
+    },
+    "dictation": {
+      "name": "dictation",
+      "description": "Speech-to-text, only global prefix triggers commands"
+    },
+    "terminal": {
+      "name": "terminal",
+      "description": "Voice commands sent to terminal"
+    },
+    "sleep": {
+      "name": "sleep",
+      "description": "KaleoCtrl paused, listens only for wake phrase"
+    }
+  },
+
+  "mode_switch": "mode",
+  "wake_phrase": "wake up",
+  "sleep_phrase": "sleep",
+
+  "commands": {
+    "open": "open",
+    "close": "close",
+    "switch": "switch",
+    "minimize": "minimize",
+    "maximize": "maximize",
+    "fullscreen": "fullscreen",
+    "stop": "stop",
+    "undo": "undo"
+  },
+
+  "dictation": {
+    "new_line": "new line",
+    "new_paragraph": "new paragraph",
+    "delete_word": "delete word",
+    "delete_sentence": "delete sentence",
+    "select_all": "select all",
+    "copy": "copy",
+    "paste": "paste",
+    "cut": "cut"
+  }
+}
