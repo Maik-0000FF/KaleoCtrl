@@ -23,6 +23,8 @@
   let listening = $state(false);
   let currentMode = $state<AppMode>("desktop");
   let lastTranscription = $state("");
+  let partialText = $state("");
+  let keyPending = $state(false);
   let modelLoading = $state(false);
   let modelError = $state("");
 
@@ -82,10 +84,22 @@
     refreshStatus();
     const interval = setInterval(refreshStatus, 2000);
 
+    const unlistenKeyPending = listen<boolean>("key_pending", (event) => {
+      keyPending = event.payload;
+    });
+
+    const unlistenPartial = listen<{ text: string }>(
+      "transcription_partial",
+      (event) => {
+        partialText = event.payload.text;
+      },
+    );
+
     const unlistenTranscription = listen<{ text: string }>(
       "transcription",
       (event) => {
         lastTranscription = event.payload.text;
+        partialText = "";
       },
     );
 
@@ -95,6 +109,8 @@
 
     return () => {
       clearInterval(interval);
+      unlistenKeyPending.then((f) => f());
+      unlistenPartial.then((f) => f());
       unlistenTranscription.then((f) => f());
       unlistenMode.then((f) => f());
     };
@@ -184,6 +200,20 @@
         <AudioLevelMeter />
       </div>
     </div>
+
+    {#if keyPending}
+      <div class="key-pending-box">
+        <span class="key-pending-label">Taste?</span>
+        <span class="key-pending-hint">Sage den Tastennamen...</span>
+      </div>
+    {/if}
+
+    {#if partialText}
+      <div class="transcription-box partial">
+        <span class="label">Speaking...</span>
+        <p class="transcription-text partial-text">{partialText}</p>
+      </div>
+    {/if}
 
     {#if lastTranscription}
       <div class="transcription-box">
@@ -356,6 +386,43 @@
     font-size: 14px;
     margin-top: 6px;
     line-height: 1.6;
+  }
+
+  .transcription-box.partial {
+    border-color: var(--accent-dim, rgba(79, 195, 247, 0.3));
+  }
+
+  .partial-text {
+    color: var(--text-muted);
+    font-style: italic;
+  }
+
+  .key-pending-box {
+    margin-top: 20px;
+    background: rgba(255, 167, 38, 0.1);
+    border: 1px solid #ffa726;
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    animation: pulse-border 1s ease-in-out infinite alternate;
+  }
+
+  .key-pending-label {
+    font-size: 18px;
+    font-weight: 700;
+    color: #ffa726;
+  }
+
+  .key-pending-hint {
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+
+  @keyframes pulse-border {
+    from { border-color: #ffa726; }
+    to { border-color: rgba(255, 167, 38, 0.3); }
   }
 
   .loading {

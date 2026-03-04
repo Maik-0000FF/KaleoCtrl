@@ -1,3 +1,4 @@
+pub mod streaming;
 pub mod whisper;
 
 use serde::Serialize;
@@ -11,6 +12,7 @@ pub struct TranscriptionResult {
     pub duration_ms: u64,
 }
 
+#[allow(dead_code)]
 pub trait SttEngine: Send + Sync {
     fn engine_name(&self) -> &str;
     fn load_model(&mut self, model_path: &str) -> Result<(), AppError>;

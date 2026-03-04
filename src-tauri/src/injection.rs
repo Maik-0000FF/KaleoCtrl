@@ -52,17 +52,22 @@ pub fn send_key(key: &str) -> Result<(), AppError> {
 // --- Wayland ---
 
 fn type_text_wayland(text: &str) -> Result<(), AppError> {
-    // Try wtype first (needs virtual-keyboard protocol, e.g. wlroots compositors)
-    if try_wtype_text(text) {
-        return Ok(());
+    // Non-ASCII (umlauts, accents etc.) — ydotool can't handle these, go straight to clipboard
+    let has_non_ascii = !text.is_ascii();
+
+    if !has_non_ascii {
+        // Try wtype first (needs virtual-keyboard protocol, e.g. wlroots compositors)
+        if try_wtype_text(text) {
+            return Ok(());
+        }
+
+        // Primary method: ydotool (works on all Wayland compositors)
+        if try_ydotool_type(text) {
+            return Ok(());
+        }
     }
 
-    // Primary method: ydotool (works on all Wayland compositors)
-    if try_ydotool_type(text) {
-        return Ok(());
-    }
-
-    // Last resort: clipboard-based (wl-copy + Ctrl+V via xdotool/XWayland)
+    // Clipboard-based injection (handles all Unicode including umlauts)
     type_text_clipboard(text)
 }
 

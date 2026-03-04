@@ -5,7 +5,7 @@ use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextPar
 use crate::error::AppError;
 use crate::stt::{SttEngine, TranscriptionResult};
 
-/// Known whisper hallucination phrases that appear during silence
+#[allow(dead_code)]
 const HALLUCINATIONS: &[&str] = &[
     "thank you",
     "thanks for watching",
@@ -25,17 +25,20 @@ const HALLUCINATIONS: &[&str] = &[
     "vielen dank",
 ];
 
+#[allow(dead_code)]
 fn is_hallucination(text: &str) -> bool {
     let lower = text.to_lowercase();
     let stripped = lower.trim_matches(|c: char| c.is_ascii_punctuation() || c.is_whitespace());
     HALLUCINATIONS.contains(&stripped)
 }
 
+#[allow(dead_code)]
 pub struct WhisperEngine {
     model_path: Option<String>,
     context: Option<WhisperContext>,
 }
 
+#[allow(dead_code)]
 impl WhisperEngine {
     pub fn new() -> Self {
         Self {
@@ -77,7 +80,7 @@ impl SttEngine for WhisperEngine {
             .map_err(|e| AppError::Stt(format!("Failed to create state: {}", e)))?;
 
         let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
-        params.set_n_threads(4);
+        params.set_n_threads(16);
         params.set_single_segment(true);
         params.set_no_timestamps(true);
         params.set_print_special(false);

@@ -21,6 +21,15 @@ pub struct KeywordConfig {
     pub sleep_phrase: String,
     pub commands: HashMap<String, String>,
     pub dictation: HashMap<String, String>,
+    /// Prefix word for key press commands (e.g. "taste", "key")
+    #[serde(default)]
+    pub key_prefix: String,
+    /// Alternative spellings / misrecognitions of the key prefix (e.g. "kaste" for "taste")
+    #[serde(default)]
+    pub key_prefix_aliases: Vec<String>,
+    /// Mapping: spoken name → key to simulate (e.g. "enter" → "Return")
+    #[serde(default)]
+    pub keys: HashMap<String, String>,
 }
 
 pub fn load_keywords(config_dir: &Path, language: &str) -> Result<KeywordConfig, AppError> {

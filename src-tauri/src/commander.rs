@@ -6,6 +6,14 @@ use crate::error::AppError;
 use crate::injection;
 use crate::keywords::KeywordConfig;
 
+/// Strip trailing/leading punctuation and normalize to lowercase.
+/// Whisper often appends ".", "?", "!" or wraps in quotes.
+fn strip_punctuation(text: &str) -> String {
+    text.trim()
+        .trim_matches(|c: char| c.is_ascii_punctuation() || c == '\u{201E}' || c == '\u{201C}')
+        .to_lowercase()
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum AppMode {
@@ -33,6 +41,7 @@ pub enum CommandResult {
     SystemCommand(String),
     TextInjected(String),
     DictationAction(String),
+    KeyPressed(String),
     Ignored,
     Sleeping,
 }
@@ -44,7 +53,7 @@ pub fn process_speech(
     keywords: &KeywordConfig,
     assistant_name: &str,
 ) -> Result<CommandResult, AppError> {
-    let text = text.trim().to_lowercase();
+    let text = strip_punctuation(text);
     if text.is_empty() {
         return Ok(CommandResult::Ignored);
     }
@@ -81,6 +90,11 @@ pub fn process_speech(
                 }
             }
         }
+    }
+
+    // Check for key press: "<key_prefix> <key_name>" (works in all active modes)
+    if let Some(result) = check_key_command(&text, keywords) {
+        return result;
     }
 
     match mode {
@@ -219,6 +233,46 @@ fn execute_system_command(action: &str, args: &str) -> Result<CommandResult, App
     Ok(CommandResult::SystemCommand(description))
 }
 
+/// Check if text matches "<key_prefix> <key_name>" and simulate the key press
+pub fn check_key_command(
+    text: &str,
+    keywords: &KeywordConfig,
+) -> Option<Result<CommandResult, AppError>> {
+    let prefix = keywords.key_prefix.to_lowercase();
+    if prefix.is_empty() {
+        return None;
+    }
+
+    // Try main prefix and all aliases (e.g. "kaste" for "taste")
+    let mut prefixes = vec![prefix];
+    for alias in &keywords.key_prefix_aliases {
+        prefixes.push(alias.to_lowercase());
+    }
+
+    let mut rest_text = None;
+    for p in &prefixes {
+        if let Some(r) = text.strip_prefix(p.as_str()) {
+            let stripped = strip_punctuation(r);
+            if !stripped.is_empty() {
+                rest_text = Some(stripped);
+                break;
+            }
+        }
+    }
+    let rest = rest_text?;
+
+    for (spoken, key_action) in &keywords.keys {
+        if rest == spoken.to_lowercase() {
+            return Some(
+                injection::send_key(key_action)
+                    .map(|_| CommandResult::KeyPressed(key_action.clone())),
+            );
+        }
+    }
+
+    None
+}
+
 fn execute_dictation_command(action: &str) -> Result<CommandResult, AppError> {
     match action {
         "new_line" => injection::send_key("Return")?,
@@ -294,6 +348,25 @@ mod tests {
         assert!(matches!(result, CommandResult::ModeChanged(AppMode::Sleep)));
     }
 
+    #[test]
+    fn test_key_command_check() {
+        let keywords = test_keywords();
+
+        let result = check_key_command("key enter", &keywords);
+        assert!(result.is_some());
+
+        let result = check_key_command("key tab", &keywords);
+        assert!(result.is_some());
+
+        // No match
+        let result = check_key_command("key unknown", &keywords);
+        assert!(result.is_none());
+
+        // Not prefixed
+        let result = check_key_command("enter", &keywords);
+        assert!(result.is_none());
+    }
+
     fn test_keywords() -> KeywordConfig {
         use std::collections::HashMap;
 
@@ -328,6 +401,13 @@ mod tests {
             dictation: HashMap::from([
                 ("new_line".into(), "new line".into()),
                 ("copy".into(), "copy".into()),
+            ]),
+            key_prefix: "key".into(),
+            key_prefix_aliases: vec!["keys".into()],
+            keys: HashMap::from([
+                ("enter".into(), "Return".into()),
+                ("tab".into(), "Tab".into()),
+                ("escape".into(), "Escape".into()),
             ]),
         }
     }

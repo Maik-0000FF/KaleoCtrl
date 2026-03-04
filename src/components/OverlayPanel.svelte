@@ -15,6 +15,8 @@
   let listening = $state(false);
   let currentMode = $state<AppMode>("desktop");
   let lastTranscription = $state("");
+  let partialText = $state("");
+  let keyPending = $state(false);
 
   async function refreshStatus() {
     try {
@@ -30,10 +32,22 @@
     refreshStatus();
     const interval = setInterval(refreshStatus, 2000);
 
+    const unlistenKeyPending = listen<boolean>("key_pending", (event) => {
+      keyPending = event.payload;
+    });
+
+    const unlistenPartial = listen<{ text: string }>(
+      "transcription_partial",
+      (event) => {
+        partialText = event.payload.text;
+      },
+    );
+
     const unlistenTranscription = listen<{ text: string }>(
       "transcription",
       (event) => {
         lastTranscription = event.payload.text;
+        partialText = "";
       },
     );
 
@@ -43,6 +57,8 @@
 
     return () => {
       clearInterval(interval);
+      unlistenKeyPending.then((f) => f());
+      unlistenPartial.then((f) => f());
       unlistenTranscription.then((f) => f());
       unlistenMode.then((f) => f());
     };
@@ -70,7 +86,13 @@
     <AudioLevelMeter />
   </div>
 
-  {#if lastTranscription}
+  {#if keyPending}
+    <div class="key-pending">Taste?</div>
+  {:else if partialText}
+    <div class="transcription partial" title={partialText}>
+      {partialText}
+    </div>
+  {:else if lastTranscription}
     <div class="transcription" title={lastTranscription}>
       {lastTranscription}
     </div>
@@ -153,5 +175,29 @@
     background: var(--bg-secondary, #1a1a2e);
     border-radius: 6px;
     margin-top: auto;
+  }
+
+  .transcription.partial {
+    color: var(--text-muted, #666);
+    font-style: italic;
+    border-left: 2px solid var(--accent, #4fc3f7);
+  }
+
+  .key-pending {
+    font-size: 14px;
+    font-weight: 700;
+    color: #ffa726;
+    text-align: center;
+    padding: 6px 8px;
+    background: rgba(255, 167, 38, 0.1);
+    border: 1px solid #ffa726;
+    border-radius: 6px;
+    margin-top: auto;
+    animation: pulse-border 1s ease-in-out infinite alternate;
+  }
+
+  @keyframes pulse-border {
+    from { border-color: #ffa726; }
+    to { border-color: rgba(255, 167, 38, 0.3); }
   }
 </style>

@@ -21,6 +21,10 @@ export async function getAvailableLanguages(): Promise<string[]> {
   return invoke<string[]>("get_available_languages");
 }
 
+export async function getAvailableModels(): Promise<string[]> {
+  return invoke<string[]>("get_available_models");
+}
+
 export async function loadSttModel(modelPath: string): Promise<void> {
   return invoke("load_stt_model", { modelPath });
 }

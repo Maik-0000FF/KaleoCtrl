@@ -11,8 +11,8 @@ use std::sync::Mutex;
 use config::{resolve_config_dir, AppConfig, ConfigState};
 use error::AppError;
 use keywords::KeywordConfig;
-use stt::whisper::WhisperEngine;
-use stt::{SttEngine, SttStatus};
+use stt::streaming::{StreamEvent, StreamingTranscriber};
+use stt::{SttStatus, TranscriptionResult};
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::TrayIconBuilder;
 use tauri::webview::WebviewWindowBuilder;
@@ -23,8 +23,8 @@ use commander::{AppMode, CommandResult};
 
 // --- App State ---
 
-pub struct SttState {
-    engine: Mutex<WhisperEngine>,
+pub struct StreamState {
+    transcriber: Mutex<StreamingTranscriber>,
 }
 
 pub struct AudioState {
@@ -44,12 +44,27 @@ fn get_config(state: State<ConfigState>) -> Result<AppConfig, AppError> {
 }
 
 #[tauri::command]
-fn update_config(state: State<ConfigState>, config: AppConfig) -> Result<(), AppError> {
+fn update_config(
+    state: State<ConfigState>,
+    stream_state: State<StreamState>,
+    config: AppConfig,
+) -> Result<(), AppError> {
+    let new_lang = config.language.clone();
+    let assistant_name = config.assistant_name.clone();
     {
         let mut current = state.config.lock().unwrap();
         *current = config;
     }
     state.save()?;
+
+    // Update streaming worker language + prompt
+    let transcriber = stream_state.transcriber.lock().unwrap();
+    if transcriber.is_running() {
+        transcriber.set_language(&new_lang);
+        let prompt = build_vocab_prompt(&state.config_dir, &new_lang, &assistant_name);
+        transcriber.set_prompt(&prompt);
+    }
+
     Ok(())
 }
 
@@ -78,11 +93,72 @@ fn get_available_languages(state: State<ConfigState>) -> Result<Vec<String>, App
     keywords::list_available_languages(&state.config_dir)
 }
 
+// --- Model Discovery ---
+
+#[tauri::command]
+fn get_available_models(config_state: State<ConfigState>) -> Vec<String> {
+    let models_dir = config_state
+        .config_dir
+        .parent()
+        .unwrap_or(&config_state.config_dir)
+        .join("models");
+
+    let mut models = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&models_dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            // Match ggml-*.bin pattern and extract the model name
+            if let Some(model_name) = name
+                .strip_prefix("ggml-")
+                .and_then(|s| s.strip_suffix(".bin"))
+            {
+                models.push(model_name.to_string());
+            }
+        }
+    }
+    models.sort();
+    models
+}
+
+/// Build a short vocabulary prompt from keywords to bias whisper recognition.
+/// Must stay under ~50 tokens — longer prompts cause hallucination loops.
+fn build_vocab_prompt(
+    config_dir: &std::path::Path,
+    language: &str,
+    assistant_name: &str,
+) -> String {
+    let mut words: Vec<String> = Vec::new();
+
+    if let Ok(kw) = keywords::load_keywords(config_dir, language) {
+        // Only the key prefix (most commonly misrecognized)
+        if !kw.key_prefix.is_empty() {
+            words.push(kw.key_prefix.clone());
+        }
+        for alias in &kw.key_prefix_aliases {
+            words.push(alias.clone());
+        }
+        // Mode switch keyword
+        words.push(kw.mode_switch.clone());
+    }
+
+    // Assistant name (highest priority)
+    words.push(assistant_name.to_string());
+
+    // Deduplicate
+    let mut seen = std::collections::HashSet::new();
+    words.retain(|w| seen.insert(w.to_lowercase()));
+
+    let prompt = words.join(", ");
+    log::info!("Vocab prompt: {}", prompt);
+    prompt
+}
+
 // --- STT Commands ---
 
 #[tauri::command]
 fn load_stt_model(
-    state: State<SttState>,
+    stream_state: State<StreamState>,
+    audio_state: State<AudioState>,
     config_state: State<ConfigState>,
     model_path: String,
 ) -> Result<(), AppError> {
@@ -105,33 +181,50 @@ fn load_stt_model(
         )));
     }
 
-    let mut engine = state.engine.lock().unwrap();
-    engine.load_model(&resolved_str)
-}
+    let config = config_state.config.lock().unwrap();
+    let language = config.language.clone();
+    let assistant_name = config.assistant_name.clone();
+    drop(config);
 
-#[tauri::command]
-fn unload_stt_model(
-    stt_state: State<SttState>,
-    audio_state: State<AudioState>,
-) -> Result<(), AppError> {
-    // Stop listening first
-    let mut capture = audio_state.capture.lock().unwrap();
-    capture.stop();
-    drop(capture);
+    // Build vocabulary prompt from keywords to bias recognition
+    let prompt = build_vocab_prompt(&config_state.config_dir, &language, &assistant_name);
 
-    // Unload model to free GPU/RAM
-    let mut engine = stt_state.engine.lock().unwrap();
-    engine.unload_model();
+    let mut transcriber = stream_state.transcriber.lock().unwrap();
+    transcriber.set_prompt(&prompt);
+    transcriber.start(&resolved_str, &language)?;
+
+    // Connect audio sink to streaming worker
+    if let Some(tx) = transcriber.audio_sender() {
+        let capture = audio_state.capture.lock().unwrap();
+        capture.set_audio_sink(tx);
+    }
+
     Ok(())
 }
 
 #[tauri::command]
-fn get_stt_status(state: State<SttState>) -> SttStatus {
-    let engine = state.engine.lock().unwrap();
+fn unload_stt_model(
+    stream_state: State<StreamState>,
+    audio_state: State<AudioState>,
+) -> Result<(), AppError> {
+    // Disconnect audio sink first
+    let capture = audio_state.capture.lock().unwrap();
+    capture.clear_audio_sink();
+    drop(capture);
+
+    // Stop streaming worker (frees GPU/RAM)
+    let mut transcriber = stream_state.transcriber.lock().unwrap();
+    transcriber.stop();
+    Ok(())
+}
+
+#[tauri::command]
+fn get_stt_status(state: State<StreamState>) -> SttStatus {
+    let transcriber = state.transcriber.lock().unwrap();
     SttStatus {
-        engine: engine.engine_name().to_string(),
-        model_loaded: engine.is_model_loaded(),
-        current_model: engine.current_model().map(|s| s.to_string()),
+        engine: "whisper.cpp (streaming)".to_string(),
+        model_loaded: transcriber.is_running(),
+        current_model: transcriber.current_model().map(|s| s.to_string()),
     }
 }
 
@@ -189,7 +282,8 @@ fn toggle_overlay(app: tauri::AppHandle) -> Result<(), AppError> {
 }
 
 pub fn run() {
-    env_logger::init();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
+        .init();
 
     let config_dir = resolve_config_dir();
     let config_state =
@@ -204,8 +298,8 @@ pub fn run() {
     )
     .unwrap_or(AppMode::Desktop);
 
-    let stt_state = SttState {
-        engine: Mutex::new(WhisperEngine::new()),
+    let stream_state = StreamState {
+        transcriber: Mutex::new(StreamingTranscriber::new()),
     };
     let audio_state = AudioState {
         capture: Mutex::new(AudioCapture::new()),
@@ -216,7 +310,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .manage(config_state)
-        .manage(stt_state)
+        .manage(stream_state)
         .manage(audio_state)
         .manage(mode_state)
         .invoke_handler(tauri::generate_handler![
@@ -225,6 +319,7 @@ pub fn run() {
             get_keywords,
             save_keywords,
             get_available_languages,
+            get_available_models,
             load_stt_model,
             unload_stt_model,
             get_stt_status,
@@ -316,10 +411,10 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            // --- Speech Processing Loop ---
+            // --- Event Processing Loop ---
             let app_handle = app.handle().clone();
             std::thread::spawn(move || {
-                speech_processing_loop(app_handle);
+                event_processing_loop(app_handle);
             });
 
             Ok(())
@@ -345,90 +440,161 @@ fn cleanup(app: &tauri::AppHandle) {
     let audio_state = app.state::<AudioState>();
     audio_state.capture.lock().unwrap().stop();
 
-    let stt_state = app.state::<SttState>();
-    stt_state.engine.lock().unwrap().unload_model();
+    let stream_state = app.state::<StreamState>();
+    stream_state.transcriber.lock().unwrap().stop();
 
     log::info!("Cleanup complete — resources freed");
 }
 
-/// Background loop: take speech segments, transcribe, process commands
-fn speech_processing_loop(app: tauri::AppHandle) {
-    loop {
-        std::thread::sleep(std::time::Duration::from_millis(100));
+/// Background loop: emit audio levels, process stream events, execute commands
+fn event_processing_loop(app: tauri::AppHandle) {
+    // Buffer for split key commands: user says "taste" [pause] "enter" as two segments
+    let mut pending_key_prefix = false;
 
-        // Emit audio level (~10x/s matches our 100ms sleep)
-        let segments = {
+    loop {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+
+        // Emit audio level (~20x/s)
+        {
             let audio_state = app.state::<AudioState>();
             let capture = audio_state.capture.lock().unwrap();
-            let recording =
-                capture.is_recording.load(std::sync::atomic::Ordering::Relaxed);
+            let recording = capture
+                .is_recording
+                .load(std::sync::atomic::Ordering::Relaxed);
 
             if recording {
-                // Scale RMS to 0.0–1.0 range (typical speech RMS is ~0.01–0.15)
                 let rms = capture.rms();
                 let level = (rms / 0.15).clamp(0.0, 1.0);
                 let _ = app.emit("audio_level", level);
             } else {
                 let _ = app.emit("audio_level", 0.0f32);
-                continue;
             }
+        }
 
-            capture.take_segments()
+        // Collect stream events (briefly lock transcriber, non-blocking try_recv)
+        let events: Vec<StreamEvent> = {
+            let stream_state = app.state::<StreamState>();
+            let transcriber = stream_state.transcriber.lock().unwrap();
+            let mut events = Vec::new();
+            if let Some(rx) = &transcriber.event_rx {
+                while let Ok(event) = rx.try_recv() {
+                    events.push(event);
+                }
+            }
+            events
         };
 
-        if segments.is_empty() {
+        if events.is_empty() {
             continue;
         }
 
-        // Check if STT model is loaded
-        let stt_state = app.state::<SttState>();
-        let engine = stt_state.engine.lock().unwrap();
-        if !engine.is_model_loaded() {
-            continue;
-        }
-
-        // Read language once per batch
+        // Read config once per batch
         let config_state = app.state::<ConfigState>();
         let config = config_state.config.lock().unwrap();
         let assistant_name = config.assistant_name.clone();
         let language = config.language.clone();
         drop(config);
 
-        for segment in segments {
-            match engine.transcribe(&segment, 16000, Some(&language)) {
-                Ok(result) if !result.text.is_empty() => {
-                    log::info!("Transcribed: '{}' ({}ms)", result.text, result.duration_ms);
+        let kw_result = keywords::load_keywords(&config_state.config_dir, &language);
 
-                    // Emit transcription event to frontend
-                    let _ = app.emit("transcription", &result);
-
-                    if let Ok(keywords) =
-                        keywords::load_keywords(&config_state.config_dir, &language)
-                    {
-                        let mode_state = app.state::<ModeState>();
-                        let mut mode = mode_state.mode.lock().unwrap();
-
-                        match commander::process_speech(
-                            &result.text,
-                            &mut mode,
-                            &keywords,
-                            &assistant_name,
-                        ) {
-                            Ok(cmd_result) => {
-                                let _ = app.emit("command_result", &cmd_result);
-                                if let CommandResult::ModeChanged(new_mode) = cmd_result {
-                                    let _ = app.emit("mode_changed", &new_mode);
-                                }
-                            }
-                            Err(e) => {
-                                log::error!("Command processing error: {}", e);
-                            }
-                        }
+        for event in events {
+            match &event {
+                StreamEvent::Partial { text, duration_ms } => {
+                    if !text.is_empty() {
+                        log::debug!("Partial: '{}' ({}ms)", text, duration_ms);
+                        let payload = TranscriptionResult {
+                            text: text.clone(),
+                            language: None,
+                            duration_ms: *duration_ms,
+                        };
+                        let _ = app.emit("transcription_partial", &payload);
                     }
                 }
-                Ok(_) => {} // Empty transcription
-                Err(e) => {
-                    log::error!("Transcription error: {}", e);
+                StreamEvent::Final {
+                    text,
+                    language: detected_lang,
+                    duration_ms,
+                } => {
+                    if text.is_empty() {
+                        continue;
+                    }
+
+                    log::info!("Final: '{}' ({}ms)", text, duration_ms);
+
+                    let payload = TranscriptionResult {
+                        text: text.clone(),
+                        language: detected_lang.clone(),
+                        duration_ms: *duration_ms,
+                    };
+                    let _ = app.emit("transcription", &payload);
+
+                    let Ok(ref keywords) = kw_result else {
+                        continue;
+                    };
+
+                    let lower = text
+                        .trim()
+                        .trim_matches(|c: char| c.is_ascii_punctuation())
+                        .to_lowercase();
+
+                    // Key prefix buffering: "taste" [pause] "enter"
+                    if pending_key_prefix {
+                        pending_key_prefix = false;
+                        let _ = app.emit("key_pending", false);
+                        let combined =
+                            format!("{} {}", keywords.key_prefix.to_lowercase(), lower);
+                        if let Some(result) =
+                            commander::check_key_command(&combined, keywords)
+                        {
+                            match result {
+                                Ok(cmd_result) => {
+                                    log::info!("Key command (buffered): {:?}", cmd_result);
+                                    let _ = app.emit("command_result", &cmd_result);
+                                }
+                                Err(e) => {
+                                    log::error!("Key command error: {}", e);
+                                }
+                            }
+                            continue;
+                        }
+                        // No key matched — fall through to normal processing
+                    }
+
+                    // Check if text is just the key prefix (or alias) → buffer for next segment
+                    if !keywords.key_prefix.is_empty() {
+                        let is_prefix = lower == keywords.key_prefix.to_lowercase()
+                            || keywords
+                                .key_prefix_aliases
+                                .iter()
+                                .any(|a| lower == a.to_lowercase());
+                        if is_prefix {
+                            pending_key_prefix = true;
+                            let _ = app.emit("key_pending", true);
+                            log::info!("Key input mode — waiting for key name...");
+                            continue;
+                        }
+                    }
+
+                    // Normal command processing
+                    let mode_state = app.state::<ModeState>();
+                    let mut mode = mode_state.mode.lock().unwrap();
+
+                    match commander::process_speech(
+                        text,
+                        &mut mode,
+                        keywords,
+                        &assistant_name,
+                    ) {
+                        Ok(cmd_result) => {
+                            let _ = app.emit("command_result", &cmd_result);
+                            if let CommandResult::ModeChanged(new_mode) = cmd_result {
+                                let _ = app.emit("mode_changed", &new_mode);
+                            }
+                        }
+                        Err(e) => {
+                            log::error!("Command processing error: {}", e);
+                        }
+                    }
                 }
             }
         }

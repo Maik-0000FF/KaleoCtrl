@@ -1,5 +1,5 @@
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{mpsc, Arc, Mutex};
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{SampleFormat, Stream};
@@ -25,9 +25,9 @@ pub struct Vad {
 impl Vad {
     pub fn new() -> Self {
         Self {
-            speech_threshold: 0.015,
-            silence_threshold: 0.008,
-            silence_frames_required: 30, // ~0.5s at typical chunk sizes
+            speech_threshold: 0.025,
+            silence_threshold: 0.012,
+            silence_frames_required: 15, // ~0.25s at typical chunk sizes
             is_speaking: false,
             silent_frames: 0,
         }
@@ -58,10 +58,13 @@ impl Vad {
         }
     }
 
-    #[allow(dead_code)]
     pub fn reset(&mut self) {
         self.is_speaking = false;
         self.silent_frames = 0;
+    }
+
+    pub fn is_speaking(&self) -> bool {
+        self.is_speaking
     }
 
     pub fn calculate_rms(samples: &[f32]) -> f32 {
@@ -73,13 +76,12 @@ impl Vad {
     }
 }
 
-/// Manages microphone capture and speech segment collection
+/// Manages microphone capture and streams audio to the transcription worker.
 pub struct AudioCapture {
     stream: Option<Stream>,
     pub is_recording: Arc<AtomicBool>,
-    pub speech_buffer: Arc<Mutex<Vec<f32>>>,
-    pub pending_segments: Arc<Mutex<Vec<Vec<f32>>>>,
     current_rms: Arc<AtomicU32>,
+    audio_sink: Arc<Mutex<Option<mpsc::Sender<Vec<f32>>>>>,
     sample_rate: u32,
 }
 
@@ -88,11 +90,20 @@ impl AudioCapture {
         Self {
             stream: None,
             is_recording: Arc::new(AtomicBool::new(false)),
-            speech_buffer: Arc::new(Mutex::new(Vec::new())),
-            pending_segments: Arc::new(Mutex::new(Vec::new())),
             current_rms: Arc::new(AtomicU32::new(0)),
+            audio_sink: Arc::new(Mutex::new(None)),
             sample_rate: TARGET_SAMPLE_RATE,
         }
+    }
+
+    /// Set the audio sink — audio chunks will be sent here for processing.
+    pub fn set_audio_sink(&self, tx: mpsc::Sender<Vec<f32>>) {
+        *self.audio_sink.lock().unwrap() = Some(tx);
+    }
+
+    /// Remove the audio sink.
+    pub fn clear_audio_sink(&self) {
+        *self.audio_sink.lock().unwrap() = None;
     }
 
     pub fn start(&mut self) -> Result<(), AppError> {
@@ -130,11 +141,8 @@ impl AudioCapture {
         let channels = config.channels() as usize;
         let device_sample_rate = config.sample_rate();
         let is_recording = self.is_recording.clone();
-        let speech_buffer = self.speech_buffer.clone();
-        let pending_segments = self.pending_segments.clone();
         let current_rms = self.current_rms.clone();
-
-        let vad = Arc::new(Mutex::new(Vad::new()));
+        let audio_sink = self.audio_sink.clone();
 
         let stream = device
             .build_input_stream(
@@ -164,18 +172,11 @@ impl AudioCapture {
                     let rms = Vad::calculate_rms(&resampled);
                     current_rms.store(rms.to_bits(), Ordering::Relaxed);
 
-                    let mut vad = vad.lock().unwrap();
-                    let (is_speech, speech_ended) = vad.process(&resampled);
-
-                    let mut buffer = speech_buffer.lock().unwrap();
-                    if is_speech {
-                        buffer.extend_from_slice(&resampled);
-                    }
-
-                    if speech_ended && !buffer.is_empty() {
-                        let segment = std::mem::take(&mut *buffer);
-                        let mut segments = pending_segments.lock().unwrap();
-                        segments.push(segment);
+                    // Forward to streaming worker (non-blocking)
+                    if let Ok(guard) = audio_sink.try_lock() {
+                        if let Some(tx) = guard.as_ref() {
+                            let _ = tx.send(resampled);
+                        }
                     }
                 },
                 |err| {
@@ -203,7 +204,6 @@ impl AudioCapture {
     pub fn stop(&mut self) {
         self.is_recording.store(false, Ordering::Relaxed);
         self.stream = None;
-        self.speech_buffer.lock().unwrap().clear();
         self.current_rms.store(0f32.to_bits(), Ordering::Relaxed);
         log::info!("Audio capture stopped");
     }
@@ -211,12 +211,6 @@ impl AudioCapture {
     /// Current RMS level (lock-free read)
     pub fn rms(&self) -> f32 {
         f32::from_bits(self.current_rms.load(Ordering::Relaxed))
-    }
-
-    /// Take all pending speech segments
-    pub fn take_segments(&self) -> Vec<Vec<f32>> {
-        let mut segments = self.pending_segments.lock().unwrap();
-        std::mem::take(&mut *segments)
     }
 
     #[allow(dead_code)]
@@ -282,7 +276,7 @@ mod tests {
         // Start speaking
         let loud: Vec<f32> = vec![0.1; 160];
         vad.process(&loud);
-        assert!(vad.is_speaking);
+        assert!(vad.is_speaking());
 
         // Quiet but above silence threshold — should still be speaking
         let medium: Vec<f32> = vec![0.01; 160];

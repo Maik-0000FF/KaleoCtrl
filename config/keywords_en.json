@@ -44,5 +44,23 @@
     "copy": "copy",
     "paste": "paste",
     "cut": "cut"
+  },
+
+  "key_prefix": "key",
+  "keys": {
+    "enter": "Return",
+    "tab": "Tab",
+    "escape": "Escape",
+    "space": "space",
+    "delete": "Delete",
+    "backspace": "BackSpace",
+    "up": "Up",
+    "down": "Down",
+    "left": "Left",
+    "right": "Right",
+    "home": "Home",
+    "end": "End",
+    "page up": "Page_Up",
+    "page down": "Page_Down"
   }
 }

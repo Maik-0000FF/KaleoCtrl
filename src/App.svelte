@@ -1,7 +1,7 @@
 <script lang="ts">
   import "./app.css";
   import type { AppConfig, KeywordConfig } from "./lib/types";
-  import { getConfig, getKeywords, getAvailableLanguages } from "./lib/api";
+  import { getConfig, getKeywords, getAvailableLanguages, getAvailableModels } from "./lib/api";
   import Sidebar from "./components/Sidebar.svelte";
   import StatusPanel from "./components/StatusPanel.svelte";
   import SettingsPanel from "./components/SettingsPanel.svelte";
@@ -15,11 +15,13 @@
   let config = $state<AppConfig | null>(null);
   let keywords = $state<KeywordConfig | null>(null);
   let languages = $state<string[]>([]);
+  let models = $state<string[]>([]);
 
   async function loadData() {
     try {
       config = await getConfig();
       languages = await getAvailableLanguages();
+      models = await getAvailableModels();
       keywords = await getKeywords();
     } catch (e) {
       console.error("Failed to load data:", e);
@@ -47,7 +49,7 @@
     {#if activePanel === "status"}
       <StatusPanel {config} />
     {:else if activePanel === "settings"}
-      <SettingsPanel {config} {languages} onConfigChanged={handleConfigChanged} />
+      <SettingsPanel {config} {languages} {models} onConfigChanged={handleConfigChanged} />
     {:else if activePanel === "keywords"}
       <KeywordsPanel {keywords} onKeywordsChanged={(kw) => (keywords = { ...kw })} />
     {/if}

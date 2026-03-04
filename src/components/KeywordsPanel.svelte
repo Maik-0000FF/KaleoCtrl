@@ -15,6 +15,8 @@
   let newCommandValue = $state("");
   let newDictationKey = $state("");
   let newDictationValue = $state("");
+  let newKeyName = $state("");
+  let newKeyAction = $state("");
 
   function debounceSave() {
     if (!keywords) return;
@@ -63,6 +65,21 @@
     keywords = { ...keywords, dictation: { ...keywords.dictation } };
     debounceSave();
   }
+
+  function addKey() {
+    if (!keywords || !newKeyName.trim() || !newKeyAction.trim()) return;
+    keywords.keys[newKeyName.trim().toLowerCase()] = newKeyAction.trim();
+    newKeyName = "";
+    newKeyAction = "";
+    debounceSave();
+  }
+
+  function removeKey(key: string) {
+    if (!keywords) return;
+    delete keywords.keys[key];
+    keywords = { ...keywords, keys: { ...keywords.keys } };
+    debounceSave();
+  }
 </script>
 
 <div class="panel">
@@ -98,6 +115,14 @@
           <input
             type="text"
             bind:value={keywords.sleep_phrase}
+            oninput={debounceSave}
+          />
+        </div>
+        <div class="edit-row">
+          <span class="edit-label">Key Prefix</span>
+          <input
+            type="text"
+            bind:value={keywords.key_prefix}
             oninput={debounceSave}
           />
         </div>
@@ -173,6 +198,42 @@
           onkeydown={(e) => e.key === "Enter" && addDictation()}
         />
         <button class="btn-add" onclick={addDictation}>+</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3>Key Commands</h3>
+      <div class="edit-grid">
+        {#each Object.entries(keywords.keys) as [key, value]}
+          <div class="edit-row">
+            <span class="edit-label">{key}</span>
+            <input
+              type="text"
+              value={value}
+              oninput={(e) => {
+                if (!keywords) return;
+                keywords.keys[key] = (e.target as HTMLInputElement).value;
+                debounceSave();
+              }}
+            />
+            <button class="btn-remove" onclick={() => removeKey(key)} title="Remove">x</button>
+          </div>
+        {/each}
+      </div>
+      <div class="add-row">
+        <input
+          type="text"
+          placeholder="Spoken name (e.g. enter)"
+          bind:value={newKeyName}
+          onkeydown={(e) => e.key === "Enter" && addKey()}
+        />
+        <input
+          type="text"
+          placeholder="Key action (e.g. Return)"
+          bind:value={newKeyAction}
+          onkeydown={(e) => e.key === "Enter" && addKey()}
+        />
+        <button class="btn-add" onclick={addKey}>+</button>
       </div>
     </div>
 

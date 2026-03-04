@@ -1,14 +1,15 @@
 <script lang="ts">
   import type { AppConfig } from "../lib/types";
-  import { updateConfig } from "../lib/api";
+  import { updateConfig, getAvailableModels } from "../lib/api";
 
   interface Props {
     config: AppConfig | null;
     languages: string[];
+    models: string[];
     onConfigChanged: (config: AppConfig) => void;
   }
 
-  let { config, languages, onConfigChanged }: Props = $props();
+  let { config, languages, models, onConfigChanged }: Props = $props();
 
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
   let showSaved = $state(false);
@@ -69,13 +70,19 @@
 
       <div class="field">
         <label for="stt-model">STT Model</label>
-        <input
+        <select
           id="stt-model"
-          type="text"
           bind:value={config.stt_model}
-          oninput={debounceSave}
-        />
-        <span class="hint">whisper.cpp model name</span>
+          onchange={debounceSave}
+        >
+          {#each models as model}
+            <option value={model}>{model}</option>
+          {/each}
+          {#if models.length === 0}
+            <option value={config.stt_model}>{config.stt_model}</option>
+          {/if}
+        </select>
+        <span class="hint">whisper.cpp model (from models/ directory)</span>
       </div>
 
       <div class="field">

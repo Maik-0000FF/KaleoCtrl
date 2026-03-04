@@ -18,6 +18,9 @@ export interface KeywordConfig {
   sleep_phrase: string;
   commands: Record<string, string>;
   dictation: Record<string, string>;
+  key_prefix: string;
+  key_prefix_aliases: string[];
+  keys: Record<string, string>;
 }
 
 export interface SttStatus {
