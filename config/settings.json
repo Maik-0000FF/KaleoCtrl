@@ -1,6 +1,6 @@
 {
   "assistant_name": "prometheus",
-  "language": "en",
+  "language": "de",
   "stt_model": "large-v3-turbo",
-  "default_mode": "desktop"
+  "default_mode": "dictation"
 }

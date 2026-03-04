@@ -22,6 +22,16 @@ build/
 venv/
 .venv/
 
+# Node
+node_modules/
+
+# Tauri / Rust
+src-tauri/target/
+src-tauri/gen/
+
+# Whisper models
+models/
+
 # Logs
 *.log
 
