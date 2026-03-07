@@ -10,12 +10,15 @@
 </p>
 
 <p align="center">
+  <img src="https://img.shields.io/badge/status-early%20development-yellow" alt="Status">
   <img src="https://img.shields.io/badge/platform-Linux-blue" alt="Platform">
   <img src="https://img.shields.io/badge/backend-Rust%20%2F%20Tauri%20v2-orange" alt="Backend">
   <img src="https://img.shields.io/badge/frontend-Svelte-red" alt="Frontend">
   <img src="https://img.shields.io/badge/STT-whisper.cpp-green" alt="STT">
   <img src="https://img.shields.io/badge/license-PolyForm%20Noncommercial-lightgrey" alt="License">
 </p>
+
+> **Early Development** — This project is in an early stage. Features may change, break, or be incomplete. Contributions and feedback are welcome.
 
 ---
 
@@ -30,6 +33,35 @@ KaleoCtrl turns your voice into actions on the Linux desktop. It captures speech
 - **Hardware-flexible** — GPU acceleration via CUDA, Vulkan, Metal, or SYCL; runs on CPU too
 - **Multilingual** — supports 99+ languages out of the box (whisper large-v3-turbo)
 - **Extensible** — add new languages by dropping a keyword file, swap STT models via config
+
+---
+
+## Development Setup & Hardware
+
+KaleoCtrl is being developed and tested on the following system:
+
+| Component | Specification |
+|-----------|--------------|
+| **OS** | EndeavourOS (Arch-based) — Kernel 6.19 |
+| **CPU** | Intel Core i9-13900H (20 threads) |
+| **RAM** | 64 GB DDR5 |
+| **GPU** | Intel Iris Xe Graphics (RPL-P) — integrated |
+| **Display Server** | Wayland (KDE Plasma) |
+
+### Whisper on Intel GPU
+
+KaleoCtrl runs whisper.cpp with **Vulkan** backend to leverage the Intel Iris Xe integrated GPU for inference. This means no dedicated NVIDIA/AMD GPU is required — the model runs accelerated on the iGPU that's already in your laptop.
+
+The setup:
+- **whisper-rs** Rust bindings with `features = ["vulkan"]`
+- **Mesa Vulkan driver** (`Intel open-source Mesa driver`) provides the GPU compute layer
+- **Default model**: `large-v3-turbo` (809M params, GGML format) — best balance of accuracy and speed
+- **Streaming mode**: audio is transcribed in real-time as you speak, not after you stop
+- Inference runs at near real-time speed on the Iris Xe, with partial results delivered every ~1 second
+
+**Limitation:** Real-time simultaneous speech-to-text is not achievable on this hardware. The Intel Iris Xe iGPU lacks the compute power for true simultaneous transcription — there is a noticeable delay between speaking and text output. For low-latency real-time STT, a dedicated GPU (e.g. NVIDIA with CUDA) is recommended.
+
+Smaller models (`small`, quantized `q5_0`) are available for systems with less GPU memory or processing power and can reduce latency at the cost of accuracy.
 
 ---
 
