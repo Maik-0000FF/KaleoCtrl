@@ -311,6 +311,7 @@ To add a new language, create a keyword file following the same schema and selec
 The install script detects your distribution and handles everything:
 
 ```bash
+# Prerequisites: git, curl
 git clone https://github.com/Maik-0000FF/KaleoCtrl.git
 cd KaleoCtrl
 chmod +x install.sh

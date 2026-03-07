@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640">
+  <defs>
+    <linearGradient id="bg-grad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0a0a14"/>
+      <stop offset="100%" stop-color="#141428"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#80d8ff"/>
+      <stop offset="100%" stop-color="#2a7a9e"/>
+    </linearGradient>
+  </defs>
+  <!-- Background -->
+  <rect width="1280" height="640" fill="url(#bg-grad)"/>
+  <!-- Subtle border -->
+  <rect x="1" y="1" width="1278" height="638" rx="0" fill="none" stroke="#80d8ff" stroke-opacity="0.08" stroke-width="2"/>
+  <!-- Icon (scaled from 256 to ~160) -->
+  <g transform="translate(200,180) scale(0.625)">
+    <rect width="256" height="256" rx="56" ry="56" fill="#0f0f1a" stroke="#80d8ff" stroke-opacity="0.15" stroke-width="2"/>
+    <g transform="translate(43,62)">
+      <path d="M0,0 L0,132 M0,66 L64,0 M0,66 L64,132"
+            fill="none" stroke="url(#accent)" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M118,-14 Q56,66 118,146" fill="none" stroke="#4fc3f7" stroke-width="10" stroke-linecap="round" opacity="0.3"/>
+      <path d="M148,10 Q100,66 148,122" fill="none" stroke="#4fc3f7" stroke-width="9.5" stroke-linecap="round" opacity="0.5"/>
+      <path d="M176,34 Q140,66 176,98" fill="none" stroke="#4fc3f7" stroke-width="9" stroke-linecap="round" opacity="0.7"/>
+    </g>
+  </g>
+  <!-- App name -->
+  <text x="460" y="305" font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif" font-size="72" font-weight="700" fill="#e0e0e0" letter-spacing="-1">KaleoCtrl</text>
+  <!-- Tagline -->
+  <text x="460" y="360" font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif" font-size="26" fill="#80d8ff" opacity="0.85">Voice control and speech-to-text for the Linux desktop.</text>
+  <!-- Subtitle -->
+  <text x="460" y="400" font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif" font-size="20" fill="#888" opacity="0.7">100% offline. Privacy-first. Multilingual.</text>
+  <!-- Tech badges bottom -->
+  <g transform="translate(200,530)">
+    <rect x="0" y="0" width="70" height="28" rx="6" fill="#80d8ff" fill-opacity="0.1" stroke="#80d8ff" stroke-opacity="0.3" stroke-width="1"/>
+    <text x="35" y="19" font-family="Inter, monospace" font-size="13" fill="#80d8ff" text-anchor="middle">Rust</text>
+    <rect x="84" y="0" width="80" height="28" rx="6" fill="#80d8ff" fill-opacity="0.1" stroke="#80d8ff" stroke-opacity="0.3" stroke-width="1"/>
+    <text x="124" y="19" font-family="Inter, monospace" font-size="13" fill="#80d8ff" text-anchor="middle">Tauri v2</text>
+    <rect x="178" y="0" width="75" height="28" rx="6" fill="#80d8ff" fill-opacity="0.1" stroke="#80d8ff" stroke-opacity="0.3" stroke-width="1"/>
+    <text x="215" y="19" font-family="Inter, monospace" font-size="13" fill="#80d8ff" text-anchor="middle">Svelte</text>
+    <rect x="267" y="0" width="110" height="28" rx="6" fill="#80d8ff" fill-opacity="0.1" stroke="#80d8ff" stroke-opacity="0.3" stroke-width="1"/>
+    <text x="322" y="19" font-family="Inter, monospace" font-size="13" fill="#80d8ff" text-anchor="middle">whisper.cpp</text>
+    <rect x="391" y="0" width="80" height="28" rx="6" fill="#80d8ff" fill-opacity="0.1" stroke="#80d8ff" stroke-opacity="0.3" stroke-width="1"/>
+    <text x="431" y="19" font-family="Inter, monospace" font-size="13" fill="#80d8ff" text-anchor="middle">Vulkan</text>
+    <rect x="485" y="0" width="70" height="28" rx="6" fill="#80d8ff" fill-opacity="0.1" stroke="#80d8ff" stroke-opacity="0.3" stroke-width="1"/>
+    <text x="520" y="19" font-family="Inter, monospace" font-size="13" fill="#80d8ff" text-anchor="middle">Linux</text>
+  </g>
+</svg>
