@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="accent5" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#80d8ff"/>
+      <stop offset="100%" stop-color="#2a7a9e"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="56" ry="56" fill="#0f0f1a"/>
+  <!-- Bounds: left=-10, right=180.5, top=-19, bottom=151 → w=190.5, h=170 -->
+  <!-- Center: tx=(256-190.5)/2+10=43, ty=(256-170)/2+19=62 -->
+  <g transform="translate(43,62)">
+    <!-- K letter -->
+    <path d="M0,0 L0,132 M0,66 L64,0 M0,66 L64,132"
+          fill="none" stroke="url(#accent5)" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- C-shaped waves -->
+    <path d="M118,-14 Q56,66 118,146" fill="none" stroke="#4fc3f7" stroke-width="10" stroke-linecap="round" opacity="0.3"/>
+    <path d="M148,10 Q100,66 148,122" fill="none" stroke="#4fc3f7" stroke-width="9.5" stroke-linecap="round" opacity="0.5"/>
+    <path d="M176,34 Q140,66 176,98" fill="none" stroke="#4fc3f7" stroke-width="9" stroke-linecap="round" opacity="0.7"/>
+  </g>
+</svg>
