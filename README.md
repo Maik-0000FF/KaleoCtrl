@@ -364,7 +364,7 @@ Contains per-language definitions for:
 - [ ] Overlay window — compact floating status display
 - [ ] Custom voice command scripting
 - [ ] Application-specific keyword profiles
-- [ ] Training mode for improving recognition of custom terms
+- [ ] Personal vocabulary — user-defined correction dictionary and custom terms that bias whisper recognition via `initial_prompt` and post-processing (not model fine-tuning)
 - [ ] Plugin system for third-party integrations
 - [ ] Wayland-native text injection improvements
 - [ ] Audio device selection in GUI
