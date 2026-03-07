@@ -20,6 +20,7 @@ use tauri::{Emitter, Manager, State};
 
 use audio::AudioCapture;
 use commander::{AppMode, CommandResult};
+use serde::Serialize;
 
 // --- App State ---
 
@@ -91,6 +92,230 @@ fn save_keywords(state: State<ConfigState>, keywords: KeywordConfig) -> Result<(
 #[tauri::command]
 fn get_available_languages(state: State<ConfigState>) -> Result<Vec<String>, AppError> {
     keywords::list_available_languages(&state.config_dir)
+}
+
+// --- Model Catalog & Download ---
+
+#[derive(Clone, Serialize)]
+struct DownloadableModel {
+    name: String,
+    filename: String,
+    size_mb: u64,
+    description: String,
+    url: String,
+}
+
+fn get_model_catalog() -> Vec<DownloadableModel> {
+    vec![
+        DownloadableModel {
+            name: "large-v3-turbo".into(),
+            filename: "ggml-large-v3-turbo.bin".into(),
+            size_mb: 1550,
+            description: "Best accuracy/speed balance — recommended for most systems".into(),
+            url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin".into(),
+        },
+        DownloadableModel {
+            name: "large-v3-turbo-q5_0".into(),
+            filename: "ggml-large-v3-turbo-q5_0.bin".into(),
+            size_mb: 547,
+            description: "Quantized large-v3-turbo — less memory, slightly lower accuracy".into(),
+            url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin".into(),
+        },
+        DownloadableModel {
+            name: "medium".into(),
+            filename: "ggml-medium.bin".into(),
+            size_mb: 1457,
+            description: "Good accuracy, slower than turbo models".into(),
+            url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin".into(),
+        },
+        DownloadableModel {
+            name: "small".into(),
+            filename: "ggml-small.bin".into(),
+            size_mb: 464,
+            description: "Fast and lightweight — good for weaker hardware".into(),
+            url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin".into(),
+        },
+        DownloadableModel {
+            name: "base".into(),
+            filename: "ggml-base.bin".into(),
+            size_mb: 141,
+            description: "Very fast, basic accuracy — for quick testing".into(),
+            url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin".into(),
+        },
+        DownloadableModel {
+            name: "tiny".into(),
+            filename: "ggml-tiny.bin".into(),
+            size_mb: 74,
+            description: "Fastest, lowest accuracy — minimal resource usage".into(),
+            url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin".into(),
+        },
+    ]
+}
+
+#[derive(Clone, Serialize)]
+struct ModelCatalogEntry {
+    name: String,
+    size_mb: u64,
+    description: String,
+    downloaded: bool,
+}
+
+#[tauri::command]
+fn get_model_catalog_list(config_state: State<ConfigState>) -> Vec<ModelCatalogEntry> {
+    let models_dir = config_state
+        .config_dir
+        .parent()
+        .unwrap_or(&config_state.config_dir)
+        .join("models");
+
+    get_model_catalog()
+        .into_iter()
+        .map(|m| {
+            let downloaded = models_dir.join(&m.filename).exists();
+            ModelCatalogEntry {
+                name: m.name,
+                size_mb: m.size_mb,
+                description: m.description,
+                downloaded,
+            }
+        })
+        .collect()
+}
+
+#[derive(Clone, Serialize)]
+struct DownloadProgress {
+    model: String,
+    downloaded_mb: u64,
+    total_mb: u64,
+    done: bool,
+    error: Option<String>,
+}
+
+#[tauri::command]
+fn download_model(
+    app: tauri::AppHandle,
+    config_state: State<ConfigState>,
+    model_name: String,
+) -> Result<(), AppError> {
+    let catalog = get_model_catalog();
+    let entry = catalog
+        .iter()
+        .find(|m| m.name == model_name)
+        .ok_or_else(|| AppError::Config(format!("Unknown model: {}", model_name)))?
+        .clone();
+
+    let models_dir = config_state
+        .config_dir
+        .parent()
+        .unwrap_or(&config_state.config_dir)
+        .join("models");
+
+    std::fs::create_dir_all(&models_dir)
+        .map_err(|e| AppError::Config(format!("Cannot create models dir: {}", e)))?;
+
+    let dest = models_dir.join(&entry.filename);
+    if dest.exists() {
+        return Err(AppError::Config("Model already downloaded".into()));
+    }
+
+    // Download in background thread
+    std::thread::spawn(move || {
+        let emit_progress = |downloaded_mb: u64, total_mb: u64, done: bool, error: Option<String>| {
+            let _ = app.emit(
+                "download_progress",
+                DownloadProgress {
+                    model: entry.name.clone(),
+                    downloaded_mb,
+                    total_mb,
+                    done,
+                    error,
+                },
+            );
+        };
+
+        emit_progress(0, entry.size_mb, false, None);
+
+        let tmp_path = dest.with_extension("bin.part");
+
+        let result = (|| -> Result<(), String> {
+            let resp = ureq::get(&entry.url)
+                .call()
+                .map_err(|e| format!("Download failed: {}", e))?;
+
+            let total = resp
+                .headers()
+                .get("content-length")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.parse::<u64>().ok())
+                .unwrap_or(entry.size_mb * 1024 * 1024);
+            let total_mb = total / (1024 * 1024);
+
+            let mut reader = resp.into_body().into_reader();
+            let mut file = std::fs::File::create(&tmp_path)
+                .map_err(|e| format!("Cannot create file: {}", e))?;
+
+            let mut buf = [0u8; 65536];
+            let mut downloaded: u64 = 0;
+            let mut last_emit: u64 = 0;
+
+            loop {
+                let n = std::io::Read::read(&mut reader, &mut buf)
+                    .map_err(|e| format!("Read error: {}", e))?;
+                if n == 0 {
+                    break;
+                }
+                std::io::Write::write_all(&mut file, &buf[..n])
+                    .map_err(|e| format!("Write error: {}", e))?;
+                downloaded += n as u64;
+
+                let mb = downloaded / (1024 * 1024);
+                if mb > last_emit {
+                    emit_progress(mb, total_mb, false, None);
+                    last_emit = mb;
+                }
+            }
+
+            std::fs::rename(&tmp_path, &dest)
+                .map_err(|e| format!("Cannot rename file: {}", e))?;
+
+            Ok(())
+        })();
+
+        match result {
+            Ok(()) => emit_progress(entry.size_mb, entry.size_mb, true, None),
+            Err(e) => {
+                let _ = std::fs::remove_file(&tmp_path);
+                emit_progress(0, entry.size_mb, true, Some(e));
+            }
+        }
+    });
+
+    Ok(())
+}
+
+#[tauri::command]
+fn delete_model(
+    config_state: State<ConfigState>,
+    model_name: String,
+) -> Result<(), AppError> {
+    let catalog = get_model_catalog();
+    let entry = catalog
+        .iter()
+        .find(|m| m.name == model_name)
+        .ok_or_else(|| AppError::Config(format!("Unknown model: {}", model_name)))?;
+
+    let models_dir = config_state
+        .config_dir
+        .parent()
+        .unwrap_or(&config_state.config_dir)
+        .join("models");
+
+    let path = models_dir.join(&entry.filename);
+    if path.exists() {
+        std::fs::remove_file(&path)
+            .map_err(|e| AppError::Config(format!("Cannot delete model: {}", e)))?;
+    }
+    Ok(())
 }
 
 // --- Model Discovery ---
@@ -320,6 +545,9 @@ pub fn run() {
             save_keywords,
             get_available_languages,
             get_available_models,
+            get_model_catalog_list,
+            download_model,
+            delete_model,
             load_stt_model,
             unload_stt_model,
             get_stt_status,

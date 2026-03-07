@@ -60,3 +60,22 @@ export async function setMode(mode: AppMode): Promise<AppMode> {
 export async function toggleOverlay(): Promise<void> {
   return invoke("toggle_overlay");
 }
+
+export interface ModelCatalogEntry {
+  name: string;
+  size_mb: number;
+  description: string;
+  downloaded: boolean;
+}
+
+export async function getModelCatalog(): Promise<ModelCatalogEntry[]> {
+  return invoke<ModelCatalogEntry[]>("get_model_catalog_list");
+}
+
+export async function downloadModel(modelName: string): Promise<void> {
+  return invoke("download_model", { modelName });
+}
+
+export async function deleteModel(modelName: string): Promise<void> {
+  return invoke("delete_model", { modelName });
+}

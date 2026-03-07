@@ -1,18 +1,62 @@
 <script lang="ts">
   import type { AppConfig } from "../lib/types";
-  import { updateConfig, getAvailableModels } from "../lib/api";
+  import {
+    updateConfig,
+    getAvailableModels,
+    getModelCatalog,
+    downloadModel,
+    deleteModel,
+    type ModelCatalogEntry,
+  } from "../lib/api";
+  import { listen } from "@tauri-apps/api/event";
 
   interface Props {
     config: AppConfig | null;
     languages: string[];
     models: string[];
     onConfigChanged: (config: AppConfig) => void;
+    onModelsChanged: () => void;
   }
 
-  let { config, languages, models, onConfigChanged }: Props = $props();
+  let { config, languages, models, onConfigChanged, onModelsChanged }: Props = $props();
 
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
   let showSaved = $state(false);
+  let catalog = $state<ModelCatalogEntry[]>([]);
+  let downloading = $state<string | null>(null);
+  let downloadProgress = $state(0);
+  let downloadTotal = $state(0);
+  let downloadError = $state("");
+
+  async function loadCatalog() {
+    try {
+      catalog = await getModelCatalog();
+    } catch (e) {
+      console.error("Failed to load model catalog:", e);
+    }
+  }
+
+  async function handleDownload(name: string) {
+    downloading = name;
+    downloadProgress = 0;
+    downloadError = "";
+    try {
+      await downloadModel(name);
+    } catch (e) {
+      downloadError = String(e);
+      downloading = null;
+    }
+  }
+
+  async function handleDelete(name: string) {
+    try {
+      await deleteModel(name);
+      await loadCatalog();
+      onModelsChanged();
+    } catch (e) {
+      console.error("Failed to delete model:", e);
+    }
+  }
 
   function debounceSave() {
     if (!config) return;
@@ -31,6 +75,34 @@
   }
 
   const modes = ["desktop", "dictation", "terminal", "sleep"];
+
+  $effect(() => {
+    loadCatalog();
+
+    const unlistenProgress = listen<{
+      model: string;
+      downloaded_mb: number;
+      total_mb: number;
+      done: boolean;
+      error: string | null;
+    }>("download_progress", (event) => {
+      const p = event.payload;
+      downloadProgress = p.downloaded_mb;
+      downloadTotal = p.total_mb;
+      if (p.done) {
+        if (p.error) {
+          downloadError = p.error;
+        }
+        downloading = null;
+        loadCatalog();
+        onModelsChanged();
+      }
+    });
+
+    return () => {
+      unlistenProgress.then((f) => f());
+    };
+  });
 </script>
 
 <div class="panel">
@@ -99,6 +171,35 @@
         <span class="hint">Mode on startup</span>
       </div>
     </div>
+
+    <h3 class="section-title">Model Manager</h3>
+    <div class="model-catalog">
+      {#each catalog as entry}
+        <div class="catalog-entry" class:downloaded={entry.downloaded}>
+          <div class="catalog-info">
+            <span class="catalog-name">{entry.name}</span>
+            <span class="catalog-size">{entry.size_mb >= 1000 ? (entry.size_mb / 1024).toFixed(1) + " GB" : entry.size_mb + " MB"}</span>
+          </div>
+          <p class="catalog-desc">{entry.description}</p>
+          <div class="catalog-actions">
+            {#if downloading === entry.name}
+              <div class="progress-bar">
+                <div class="progress-fill" style="width: {downloadTotal > 0 ? (downloadProgress / downloadTotal) * 100 : 0}%"></div>
+              </div>
+              <span class="progress-text">{downloadProgress} / {downloadTotal} MB</span>
+            {:else if entry.downloaded}
+              <span class="downloaded-badge">Installed</span>
+              <button class="delete-btn" onclick={() => handleDelete(entry.name)}>Remove</button>
+            {:else}
+              <button class="download-btn" onclick={() => handleDownload(entry.name)} disabled={downloading !== null}>Download</button>
+            {/if}
+          </div>
+        </div>
+      {/each}
+      {#if downloadError}
+        <p class="download-error">{downloadError}</p>
+      {/if}
+    </div>
   {:else}
     <p class="loading">Loading...</p>
   {/if}
@@ -166,5 +267,132 @@
 
   .loading {
     color: var(--text-muted);
+  }
+
+  .section-title {
+    color: var(--accent);
+    font-size: 1rem;
+    font-weight: 600;
+    margin-top: 32px;
+    margin-bottom: 12px;
+  }
+
+  .model-catalog {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .catalog-entry {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 16px;
+  }
+
+  .catalog-entry.downloaded {
+    border-color: var(--accent-dim);
+  }
+
+  .catalog-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .catalog-name {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 14px;
+  }
+
+  .catalog-size {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  .catalog-desc {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin: 4px 0 8px;
+  }
+
+  .catalog-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .download-btn {
+    padding: 4px 14px;
+    border: 1px solid var(--accent);
+    border-radius: var(--radius);
+    background: var(--accent-dim);
+    color: var(--accent);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .download-btn:hover:not(:disabled) {
+    background: var(--accent);
+    color: var(--bg-primary);
+  }
+
+  .download-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .delete-btn {
+    padding: 4px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .delete-btn:hover {
+    border-color: #e57373;
+    color: #e57373;
+    background: rgba(229, 115, 115, 0.1);
+  }
+
+  .downloaded-badge {
+    font-size: 12px;
+    color: var(--success);
+    background: rgba(102, 187, 106, 0.1);
+    padding: 2px 10px;
+    border-radius: 12px;
+  }
+
+  .progress-bar {
+    flex: 1;
+    height: 6px;
+    background: var(--bg-tertiary);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+
+  .progress-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 3px;
+    transition: width 0.3s;
+  }
+
+  .progress-text {
+    font-size: 11px;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+
+  .download-error {
+    font-size: 12px;
+    color: #e57373;
+    margin-top: 4px;
   }
 </style>

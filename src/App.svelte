@@ -49,7 +49,7 @@
     {#if activePanel === "status"}
       <StatusPanel {config} />
     {:else if activePanel === "settings"}
-      <SettingsPanel {config} {languages} {models} onConfigChanged={handleConfigChanged} />
+      <SettingsPanel {config} {languages} {models} onConfigChanged={handleConfigChanged} onModelsChanged={async () => { models = await getAvailableModels(); }} />
     {:else if activePanel === "keywords"}
       <KeywordsPanel {keywords} onKeywordsChanged={(kw) => (keywords = { ...kw })} />
     {/if}
