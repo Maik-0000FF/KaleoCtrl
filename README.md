@@ -304,27 +304,36 @@ To add a new language, create a keyword file following the same schema and selec
 
 ---
 
-## Build & Run
+## Installation
 
-### Prerequisites
+### Quick Install (recommended)
 
-- Rust toolchain (rustup)
-- Node.js + npm
-- Tauri v2 CLI (`cargo install tauri-cli`)
-- System libraries: WebKitGTK, GTK3, libayatana-appindicator (see [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/))
-- For GPU: CUDA/Vulkan SDK (optional, falls back to CPU)
-
-### Development
+The install script detects your distribution and handles everything:
 
 ```bash
-npm install
-cargo tauri dev
+git clone https://github.com/Maik-0000FF/KaleoCtrl.git
+cd KaleoCtrl
+chmod +x install.sh
+./install.sh
 ```
 
-### Production Build
+The script offers three modes:
+1. **Full install** — installs all dependencies, builds the app, and adds it to your application menu
+2. **Dev setup** — installs dependencies only, for development with `cargo tauri dev`
+3. **Build only** — skips dependency installation, just builds and installs
+
+Supported distributions: **Arch/EndeavourOS/Manjaro**, **Ubuntu/Debian/Mint**, **Fedora/Nobara**, **openSUSE**
+
+After installation, open **Settings > Model Manager** in the app to download a whisper model.
+
+### Manual Build
+
+If you prefer to install dependencies yourself:
 
 ```bash
-cargo tauri build
+npm install          # frontend dependencies
+cargo tauri dev      # development mode (hot reload)
+cargo tauri build    # production build
 ```
 
 ### Rust Checks
@@ -372,6 +381,7 @@ Contains per-language definitions for:
 - [ ] Plugin system for third-party integrations
 - [ ] Wayland-native text injection improvements
 - [ ] Audio device selection in GUI
+- [ ] Pre-built release binaries (deb/rpm/AppImage) via GitHub Actions CI
 
 ---
 
