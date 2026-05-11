@@ -83,7 +83,7 @@ install_system_deps() {
             echo "  Build tools:     base-devel cmake pkg-config"
             echo "  Tauri/GTK:       gtk3 webkit2gtk-4.1 libayatana-appindicator"
             echo "  SSL:             openssl"
-            echo "  Vulkan:          vulkan-headers vulkan-icd-loader"
+            echo "  Vulkan:          vulkan-headers vulkan-icd-loader shaderc"
             echo "  Audio:           alsa-lib libpulse"
             echo "  Text injection:  xdotool wtype ydotool wl-clipboard"
             echo ""
@@ -99,7 +99,7 @@ install_system_deps() {
             sudo pacman -S --needed --noconfirm \
                 base-devel cmake pkg-config \
                 gtk3 webkit2gtk-4.1 libayatana-appindicator openssl \
-                vulkan-headers vulkan-icd-loader \
+                vulkan-headers vulkan-icd-loader shaderc \
                 alsa-lib libpulse \
                 xdotool wtype ydotool wl-clipboard
             ;;
@@ -112,7 +112,7 @@ install_system_deps() {
             echo "  Tauri/GTK:       libgtk-3-dev libwebkit2gtk-4.1-dev"
             echo "                   libayatana-appindicator3-dev"
             echo "  SSL:             libssl-dev"
-            echo "  Vulkan:          libvulkan-dev"
+            echo "  Vulkan:          libvulkan-dev glslc"
             echo "  Audio:           libasound2-dev libpulse-dev"
             echo "  Text injection:  xdotool wtype ydotool wl-clipboard"
             echo ""
@@ -125,7 +125,7 @@ install_system_deps() {
                 build-essential cmake pkg-config \
                 libgtk-3-dev libwebkit2gtk-4.1-dev \
                 libayatana-appindicator3-dev \
-                libssl-dev libvulkan-dev \
+                libssl-dev libvulkan-dev glslc \
                 libasound2-dev libpulse-dev \
                 xdotool wtype ydotool wl-clipboard
             ;;
@@ -138,7 +138,7 @@ install_system_deps() {
             echo "  Tauri/GTK:       gtk3-devel webkit2gtk4.1-devel"
             echo "                   libayatana-appindicator-devel"
             echo "  SSL:             openssl-devel"
-            echo "  Vulkan:          vulkan-headers vulkan-loader-devel"
+            echo "  Vulkan:          vulkan-headers vulkan-loader-devel glslc"
             echo "  Audio:           alsa-lib-devel pulseaudio-libs-devel"
             echo "  Text injection:  xdotool wtype ydotool wl-clipboard"
             echo ""
@@ -150,7 +150,7 @@ install_system_deps() {
                 @development-tools cmake pkg-config \
                 gtk3-devel webkit2gtk4.1-devel \
                 libayatana-appindicator-devel \
-                openssl-devel vulkan-headers vulkan-loader-devel \
+                openssl-devel vulkan-headers vulkan-loader-devel glslc \
                 alsa-lib-devel pulseaudio-libs-devel \
                 xdotool wtype ydotool wl-clipboard
             ;;
@@ -163,7 +163,7 @@ install_system_deps() {
             echo "  Tauri/GTK:       gtk3-devel webkit2gtk3-devel"
             echo "                   libayatana-appindicator3-devel"
             echo "  SSL:             libopenssl-devel"
-            echo "  Vulkan:          vulkan-devel"
+            echo "  Vulkan:          vulkan-devel shaderc"
             echo "  Audio:           alsa-devel libpulse-devel"
             echo "  Text injection:  xdotool wtype ydotool wl-clipboard"
             echo ""
@@ -176,7 +176,7 @@ install_system_deps() {
                 cmake pkg-config \
                 gtk3-devel webkit2gtk3-devel \
                 libayatana-appindicator3-devel \
-                libopenssl-devel vulkan-devel \
+                libopenssl-devel vulkan-devel shaderc \
                 alsa-devel libpulse-devel \
                 xdotool wtype ydotool wl-clipboard
             ;;
@@ -189,6 +189,7 @@ install_system_deps() {
             echo "  - libayatana-appindicator + dev headers"
             echo "  - OpenSSL + dev headers"
             echo "  - Vulkan SDK headers + loader"
+            echo "  - shaderc / glslc (GLSL→SPIR-V compiler — required for whisper.cpp Vulkan build)"
             echo "  - ALSA + PulseAudio dev headers"
             echo "  - cmake, pkg-config, build tools"
             echo "  - xdotool, wtype, ydotool, wl-clipboard"
