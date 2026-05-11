@@ -18,6 +18,11 @@ const MIN_SAMPLES_FOR_PARTIAL: usize = 8000;
 const MAX_BUFFER_SAMPLES: usize = 16000 * 25;
 /// Finalize buffered speech if no audio arrives for this duration
 const AUDIO_TIMEOUT: Duration = Duration::from_millis(300);
+/// Bounded capacity of the audio-chunk channel from cpal callback to worker.
+/// At typical cpal block sizes (~10 ms) this gives a few hundred ms of slack
+/// before the producer starts dropping chunks. Bounded so a slow transcriber
+/// cannot grow memory unboundedly.
+const AUDIO_CHANNEL_CAPACITY: usize = 32;
 
 /// Known whisper hallucination phrases that appear during silence
 const HALLUCINATIONS: &[&str] = &[
@@ -124,7 +129,7 @@ pub enum StreamEvent {
 /// (created once, reused across transcriptions). Audio flows in via channel,
 /// VAD runs in the worker, partial results every ~2s, final on speech end.
 pub struct StreamingTranscriber {
-    audio_tx: Option<mpsc::Sender<Vec<f32>>>,
+    audio_tx: Option<mpsc::SyncSender<Vec<f32>>>,
     pub event_rx: Option<mpsc::Receiver<StreamEvent>>,
     running: Arc<AtomicBool>,
     thread: Option<JoinHandle<()>>,
@@ -151,7 +156,7 @@ impl StreamingTranscriber {
         self.stop();
 
         let (init_tx, init_rx) = mpsc::channel();
-        let (audio_tx, audio_rx) = mpsc::channel();
+        let (audio_tx, audio_rx) = mpsc::sync_channel(AUDIO_CHANNEL_CAPACITY);
         let (event_tx, event_rx) = mpsc::channel();
 
         let running = Arc::new(AtomicBool::new(true));
@@ -186,7 +191,7 @@ impl StreamingTranscriber {
     }
 
     /// Clone the audio sender for use by AudioCapture.
-    pub fn audio_sender(&self) -> Option<mpsc::Sender<Vec<f32>>> {
+    pub fn audio_sender(&self) -> Option<mpsc::SyncSender<Vec<f32>>> {
         self.audio_tx.clone()
     }
 

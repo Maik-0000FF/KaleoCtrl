@@ -81,7 +81,7 @@ pub struct AudioCapture {
     stream: Option<Stream>,
     pub is_recording: Arc<AtomicBool>,
     current_rms: Arc<AtomicU32>,
-    audio_sink: Arc<Mutex<Option<mpsc::Sender<Vec<f32>>>>>,
+    audio_sink: Arc<Mutex<Option<mpsc::SyncSender<Vec<f32>>>>>,
     sample_rate: u32,
 }
 
@@ -97,7 +97,7 @@ impl AudioCapture {
     }
 
     /// Set the audio sink — audio chunks will be sent here for processing.
-    pub fn set_audio_sink(&self, tx: mpsc::Sender<Vec<f32>>) {
+    pub fn set_audio_sink(&self, tx: mpsc::SyncSender<Vec<f32>>) {
         *self.audio_sink.lock().unwrap() = Some(tx);
     }
 
@@ -143,6 +143,13 @@ impl AudioCapture {
         let is_recording = self.is_recording.clone();
         let current_rms = self.current_rms.clone();
         let audio_sink = self.audio_sink.clone();
+        let needs_resample = device_sample_rate != TARGET_SAMPLE_RATE;
+
+        // Scratch buffers reused across callback invocations. Allocating in the
+        // cpal audio thread can cause glitches; the buffers grow once and then
+        // their capacity is reused for every block.
+        let mut mono_buf: Vec<f32> = Vec::with_capacity(4096);
+        let mut resampled_buf: Vec<f32> = Vec::with_capacity(4096);
 
         let stream = device
             .build_input_stream(
@@ -152,30 +159,41 @@ impl AudioCapture {
                         return;
                     }
 
-                    // Convert to mono if needed
-                    let mono: Vec<f32> = if channels > 1 {
-                        data.chunks(channels)
-                            .map(|frame| frame.iter().sum::<f32>() / channels as f32)
-                            .collect()
+                    // Mono mix into scratch buffer
+                    mono_buf.clear();
+                    if channels > 1 {
+                        mono_buf.reserve(data.len() / channels);
+                        for frame in data.chunks(channels) {
+                            let sum: f32 = frame.iter().sum();
+                            mono_buf.push(sum / channels as f32);
+                        }
                     } else {
-                        data.to_vec()
-                    };
+                        mono_buf.extend_from_slice(data);
+                    }
 
-                    // Simple resample if needed (linear interpolation)
-                    let resampled = if device_sample_rate != TARGET_SAMPLE_RATE {
-                        resample(&mono, device_sample_rate, TARGET_SAMPLE_RATE)
+                    let processed: &[f32] = if needs_resample {
+                        resample_into(
+                            &mono_buf,
+                            device_sample_rate,
+                            TARGET_SAMPLE_RATE,
+                            &mut resampled_buf,
+                        );
+                        &resampled_buf
                     } else {
-                        mono
+                        &mono_buf
                     };
 
                     // Store current RMS for level meter (lock-free)
-                    let rms = Vad::calculate_rms(&resampled);
+                    let rms = Vad::calculate_rms(processed);
                     current_rms.store(rms.to_bits(), Ordering::Relaxed);
 
-                    // Forward to streaming worker (non-blocking)
+                    // Forward to streaming worker. Non-blocking on two fronts:
+                    // try_lock so we never wait on a poisoned/contended mutex,
+                    // try_send so we drop the chunk instead of blocking the cpal
+                    // audio thread when the transcriber lags behind.
                     if let Ok(guard) = audio_sink.try_lock() {
                         if let Some(tx) = guard.as_ref() {
-                            let _ = tx.send(resampled);
+                            let _ = tx.try_send(processed.to_vec());
                         }
                     }
                 },
@@ -219,15 +237,21 @@ impl AudioCapture {
     }
 }
 
-/// Simple linear interpolation resampler
-fn resample(input: &[f32], from_rate: u32, to_rate: u32) -> Vec<f32> {
-    if from_rate == to_rate || input.is_empty() {
-        return input.to_vec();
+/// Simple linear interpolation resampler. Writes into the caller-provided
+/// `output` buffer so the audio callback can reuse capacity across calls.
+fn resample_into(input: &[f32], from_rate: u32, to_rate: u32, output: &mut Vec<f32>) {
+    output.clear();
+    if input.is_empty() {
+        return;
+    }
+    if from_rate == to_rate {
+        output.extend_from_slice(input);
+        return;
     }
 
     let ratio = from_rate as f64 / to_rate as f64;
     let output_len = (input.len() as f64 / ratio) as usize;
-    let mut output = Vec::with_capacity(output_len);
+    output.reserve(output_len);
 
     for i in 0..output_len {
         let src_pos = i as f64 * ratio;
@@ -242,8 +266,6 @@ fn resample(input: &[f32], from_rate: u32, to_rate: u32) -> Vec<f32> {
 
         output.push(sample as f32);
     }
-
-    output
 }
 
 #[cfg(test)]
@@ -287,15 +309,30 @@ mod tests {
     #[test]
     fn test_resample_identity() {
         let input = vec![1.0, 2.0, 3.0, 4.0];
-        let output = resample(&input, 16000, 16000);
+        let mut output = Vec::new();
+        resample_into(&input, 16000, 16000, &mut output);
         assert_eq!(input, output);
     }
 
     #[test]
     fn test_resample_downsample() {
         let input: Vec<f32> = (0..320).map(|i| i as f32).collect();
-        let output = resample(&input, 48000, 16000);
+        let mut output = Vec::new();
+        resample_into(&input, 48000, 16000, &mut output);
         // 48kHz -> 16kHz = 1/3 samples
         assert!((output.len() as f32 - 106.0).abs() < 2.0);
+    }
+
+    #[test]
+    fn test_resample_into_reuses_buffer() {
+        let mut output = Vec::with_capacity(128);
+        let cap = output.capacity();
+        let input: Vec<f32> = (0..96).map(|i| i as f32).collect();
+        resample_into(&input, 48000, 16000, &mut output);
+        // Capacity should not shrink — buffer is reused across calls.
+        assert!(output.capacity() >= cap);
+        let cap2 = output.capacity();
+        resample_into(&input, 48000, 16000, &mut output);
+        assert_eq!(cap2, output.capacity());
     }
 }
