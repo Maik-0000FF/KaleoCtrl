@@ -1,0 +1,16 @@
+name: Uninstall script
+
+on:
+  workflow_call:
+
+jobs:
+  uninstall:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sanity check uninstall.sh
+        run: bash -n uninstall.sh
+
+      - name: Run sandbox test suite
+        run: bash tests/test-uninstall.sh

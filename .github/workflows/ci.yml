@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  rust:
+    name: Rust
+    uses: ./.github/workflows/_rust.yml
+
+  frontend:
+    name: Frontend
+    uses: ./.github/workflows/_frontend.yml
+
+  install-script:
+    name: Install script
+    uses: ./.github/workflows/_install-script.yml
+
+  uninstall-script:
+    name: Uninstall script
+    uses: ./.github/workflows/_uninstall-script.yml
