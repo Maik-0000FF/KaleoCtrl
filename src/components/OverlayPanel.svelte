@@ -1,7 +1,6 @@
 <script lang="ts">
   import type { SttStatus, AppMode } from "../lib/types";
-  import { getSttStatus, getListeningStatus, getMode } from "../lib/api";
-  import { listen } from "@tauri-apps/api/event";
+  import { getSttStatus, getListeningStatus, getMode, safeListen } from "../lib/api";
   import AudioLevelMeter from "./AudioLevelMeter.svelte";
 
   const modeColors: Record<AppMode, string> = {
@@ -32,18 +31,18 @@
     refreshStatus();
     const interval = setInterval(refreshStatus, 2000);
 
-    const unlistenKeyPending = listen<boolean>("key_pending", (event) => {
+    const offKeyPending = safeListen<boolean>("key_pending", (event) => {
       keyPending = event.payload;
     });
 
-    const unlistenPartial = listen<{ text: string }>(
+    const offPartial = safeListen<{ text: string }>(
       "transcription_partial",
       (event) => {
         partialText = event.payload.text;
       },
     );
 
-    const unlistenTranscription = listen<{ text: string }>(
+    const offTranscription = safeListen<{ text: string }>(
       "transcription",
       (event) => {
         lastTranscription = event.payload.text;
@@ -51,16 +50,16 @@
       },
     );
 
-    const unlistenMode = listen<AppMode>("mode_changed", (event) => {
+    const offMode = safeListen<AppMode>("mode_changed", (event) => {
       currentMode = event.payload;
     });
 
     return () => {
       clearInterval(interval);
-      unlistenKeyPending.then((f) => f());
-      unlistenPartial.then((f) => f());
-      unlistenTranscription.then((f) => f());
-      unlistenMode.then((f) => f());
+      offKeyPending();
+      offPartial();
+      offTranscription();
+      offMode();
     };
   });
 </script>

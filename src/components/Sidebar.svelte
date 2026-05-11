@@ -13,7 +13,7 @@
   ];
 </script>
 
-<nav class="sidebar">
+<nav class="sidebar" aria-label="Main navigation">
   <div class="logo">
     <span class="logo-text">KaleoCtrl</span>
   </div>
@@ -23,9 +23,10 @@
         <button
           class="nav-btn"
           class:active={activePanel === item.id}
+          aria-current={activePanel === item.id ? "page" : undefined}
           onclick={() => onNavigate(item.id)}
         >
-          <span class="nav-icon">{item.icon}</span>
+          <span class="nav-icon" aria-hidden="true">{item.icon}</span>
           <span class="nav-label">{item.label}</span>
         </button>
       </li>

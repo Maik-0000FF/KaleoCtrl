@@ -31,6 +31,8 @@ export interface SttStatus {
 
 export type AppMode = "desktop" | "dictation" | "terminal" | "sleep";
 
+export const MODES: AppMode[] = ["desktop", "dictation", "terminal", "sleep"];
+
 export interface TranscriptionResult {
   text: string;
   language: string | null;

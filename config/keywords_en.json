@@ -47,6 +47,7 @@
   },
 
   "key_prefix": "key",
+  "key_prefix_aliases": [],
   "keys": {
     "enter": "Return",
     "tab": "Tab",

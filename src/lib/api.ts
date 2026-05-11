@@ -1,5 +1,23 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type EventCallback } from "@tauri-apps/api/event";
 import type { AppConfig, KeywordConfig, SttStatus, AppMode } from "./types";
+
+// Race-safe wrapper around Tauri's async `listen`. Returns a synchronous
+// cleanup that also unregisters the listener if the effect tears down
+// before the listen() promise resolves.
+export function safeListen<T>(event: string, handler: EventCallback<T>): () => void {
+  let off: (() => void) | null = null;
+  let cancelled = false;
+  listen<T>(event, handler).then((f) => {
+    if (cancelled) f();
+    else off = f;
+  });
+  return () => {
+    cancelled = true;
+    off?.();
+    off = null;
+  };
+}
 
 export async function getConfig(): Promise<AppConfig> {
   return invoke<AppConfig>("get_config");

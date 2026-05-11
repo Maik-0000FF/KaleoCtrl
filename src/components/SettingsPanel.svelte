@@ -1,14 +1,13 @@
 <script lang="ts">
-  import type { AppConfig } from "../lib/types";
+  import { MODES, type AppConfig } from "../lib/types";
   import {
     updateConfig,
-    getAvailableModels,
     getModelCatalog,
     downloadModel,
     deleteModel,
+    safeListen,
     type ModelCatalogEntry,
   } from "../lib/api";
-  import { listen } from "@tauri-apps/api/event";
 
   interface Props {
     config: AppConfig | null;
@@ -74,12 +73,10 @@
     }, 300);
   }
 
-  const modes = ["desktop", "dictation", "terminal", "sleep"];
-
   $effect(() => {
     loadCatalog();
 
-    const unlistenProgress = listen<{
+    return safeListen<{
       model: string;
       downloaded_mb: number;
       total_mb: number;
@@ -98,10 +95,6 @@
         onModelsChanged();
       }
     });
-
-    return () => {
-      unlistenProgress.then((f) => f());
-    };
   });
 </script>
 
@@ -164,7 +157,7 @@
           bind:value={config.default_mode}
           onchange={debounceSave}
         >
-          {#each modes as mode}
+          {#each MODES as mode}
             <option value={mode}>{mode}</option>
           {/each}
         </select>

@@ -1,16 +1,12 @@
 <script lang="ts">
-  import { listen } from "@tauri-apps/api/event";
+  import { safeListen } from "../lib/api";
 
   let level = $state(0);
 
   $effect(() => {
-    const unlisten = listen<number>("audio_level", (event) => {
+    return safeListen<number>("audio_level", (event) => {
       level = event.payload;
     });
-
-    return () => {
-      unlisten.then((f) => f());
-    };
   });
 
   const barColor = $derived(
