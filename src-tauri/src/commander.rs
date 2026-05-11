@@ -119,6 +119,11 @@ pub enum Action {
 // CommandResult: reported back to the UI
 // ────────────────────────────────────────────────────────────────────────────
 
+// Variants are constructed only by `RealExecutor`, which is gated with
+// `#[cfg(not(test))]`. Test-only mock executors never produce most variants,
+// so dead-code analysis flags them in test builds — silenced here. A real
+// dead variant in a release build will still warn.
+#[cfg_attr(test, allow(dead_code))]
 #[derive(Debug, Clone, Serialize)]
 pub enum CommandResult {
     ModeChanged(AppMode),

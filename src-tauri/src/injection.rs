@@ -1,3 +1,14 @@
+//! Text and key injection backend.
+//!
+//! All `pub` functions in this module are invoked exclusively from
+//! `commander::RealExecutor`, which is itself gated with `#[cfg(not(test))]`
+//! so unit tests never spawn processes or inject input into the host desktop.
+//! That gating cascades: in test builds the call sites here disappear and
+//! every production function looks "unused" to dead-code analysis. The
+//! behavior is intentional, so we silence those warnings only for test
+//! compilations — real dead code in a release build will still warn.
+#![cfg_attr(test, allow(dead_code))]
+
 use std::process::Command;
 
 use crate::error::AppError;
