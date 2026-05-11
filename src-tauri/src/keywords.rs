@@ -30,6 +30,14 @@ pub struct KeywordConfig {
     /// Mapping: spoken name → key to simulate (e.g. "enter" → "Return")
     #[serde(default)]
     pub keys: HashMap<String, String>,
+    /// Phrase that triggers the emergency killswitch. Matched as a substring
+    /// of the transcribed utterance, in any mode (including sleep).
+    #[serde(default = "default_killswitch_phrase")]
+    pub killswitch_phrase: String,
+}
+
+fn default_killswitch_phrase() -> String {
+    "killswitch".to_string()
 }
 
 pub fn load_keywords(config_dir: &Path, language: &str) -> Result<KeywordConfig, AppError> {
@@ -145,6 +153,7 @@ mod tests {
             key_prefix: "key".into(),
             key_prefix_aliases: vec!["keys".into(), "taste".into()],
             keys,
+            killswitch_phrase: "killswitch".into(),
         };
 
         let json = serde_json::to_string(&original).unwrap();

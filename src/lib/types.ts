@@ -21,6 +21,7 @@ export interface KeywordConfig {
   key_prefix: string;
   key_prefix_aliases: string[];
   keys: Record<string, string>;
+  killswitch_phrase: string;
 }
 
 export interface SttStatus {

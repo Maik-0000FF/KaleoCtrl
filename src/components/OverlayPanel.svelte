@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { SttStatus, AppMode } from "../lib/types";
-  import { getSttStatus, getListeningStatus, getMode, safeListen } from "../lib/api";
+  import { getSttStatus, getListeningStatus, getMode, reactivateAfterKillswitch, safeListen } from "../lib/api";
   import AudioLevelMeter from "./AudioLevelMeter.svelte";
 
   const modeColors: Record<AppMode, string> = {
@@ -16,6 +16,8 @@
   let lastTranscription = $state("");
   let partialText = $state("");
   let keyPending = $state(false);
+  let killswitchActive = $state(false);
+  let killswitchTimer: ReturnType<typeof setTimeout> | null = null;
 
   async function refreshStatus() {
     try {
@@ -24,6 +26,17 @@
       currentMode = await getMode();
     } catch (e) {
       console.error("Overlay refresh failed:", e);
+    }
+  }
+
+  async function reactivate() {
+    try {
+      currentMode = await reactivateAfterKillswitch();
+      listening = true;
+      killswitchActive = false;
+      if (killswitchTimer) clearTimeout(killswitchTimer);
+    } catch (e) {
+      console.error("Overlay reactivate failed:", e);
     }
   }
 
@@ -54,12 +67,23 @@
       currentMode = event.payload;
     });
 
+    const offKillswitch = safeListen<null>("killswitch_triggered", () => {
+      killswitchActive = true;
+      listening = false;
+      if (killswitchTimer) clearTimeout(killswitchTimer);
+      killswitchTimer = setTimeout(() => {
+        killswitchActive = false;
+      }, 6000);
+    });
+
     return () => {
       clearInterval(interval);
+      if (killswitchTimer) clearTimeout(killswitchTimer);
       offKeyPending();
       offPartial();
       offTranscription();
       offMode();
+      offKillswitch();
     };
   });
 </script>
@@ -85,7 +109,11 @@
     <AudioLevelMeter />
   </div>
 
-  {#if keyPending}
+  {#if killswitchActive}
+    <button class="killswitch" onclick={reactivate} aria-label="Killswitch ausgelöst — klicken zum Reaktivieren">
+      <span aria-hidden="true">■</span> Killswitch — klicken zum Reaktivieren
+    </button>
+  {:else if keyPending}
     <div class="key-pending">Taste?</div>
   {:else if partialText}
     <div class="transcription partial" title={partialText}>
@@ -198,5 +226,28 @@
   @keyframes pulse-border {
     from { border-color: #ffa726; }
     to { border-color: rgba(255, 167, 38, 0.3); }
+  }
+
+  .killswitch {
+    font-size: 13px;
+    font-weight: 700;
+    color: #e53935;
+    text-align: center;
+    padding: 6px 8px;
+    background: rgba(229, 57, 53, 0.12);
+    border: 1px solid #e53935;
+    border-radius: 6px;
+    margin-top: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    cursor: pointer;
+    width: 100%;
+    font-family: inherit;
+  }
+
+  .killswitch:hover {
+    background: rgba(229, 57, 53, 0.2);
   }
 </style>

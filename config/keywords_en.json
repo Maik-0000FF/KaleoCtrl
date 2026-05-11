@@ -46,6 +46,8 @@
     "cut": "cut"
   },
 
+  "killswitch_phrase": "killswitch",
+
   "key_prefix": "key",
   "key_prefix_aliases": [],
   "keys": {

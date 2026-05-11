@@ -468,6 +468,30 @@ fn stop_listening(audio_state: State<AudioState>) -> Result<(), AppError> {
     Ok(())
 }
 
+/// Recover from a killswitch trigger: restart mic capture and switch back
+/// to the user's default mode in one atomic step. The frontend banner calls
+/// this so the recovery is one click instead of three (mic on, dismiss
+/// banner, leave sleep mode).
+#[tauri::command]
+fn reactivate_after_killswitch(
+    audio_state: State<AudioState>,
+    mode_state: State<ModeState>,
+    config_state: State<ConfigState>,
+) -> Result<AppMode, AppError> {
+    {
+        let mut capture = audio_state.capture.lock().unwrap();
+        capture.start()?;
+    }
+
+    let default_mode_str = {
+        let config = config_state.config.lock().unwrap();
+        config.default_mode.clone()
+    };
+    let new_mode = AppMode::from_str(&default_mode_str).unwrap_or(AppMode::Desktop);
+    *mode_state.mode.lock().unwrap() = new_mode;
+    Ok(new_mode)
+}
+
 #[tauri::command]
 fn get_listening_status(audio_state: State<AudioState>) -> bool {
     let capture = audio_state.capture.lock().unwrap();
@@ -553,6 +577,7 @@ pub fn run() {
             get_stt_status,
             start_listening,
             stop_listening,
+            reactivate_after_killswitch,
             get_listening_status,
             get_mode,
             set_mode,
@@ -815,8 +840,22 @@ fn event_processing_loop(app: tauri::AppHandle) {
                     ) {
                         Ok(cmd_result) => {
                             let _ = app.emit("command_result", &cmd_result);
-                            if let CommandResult::ModeChanged(new_mode) = cmd_result {
-                                let _ = app.emit("mode_changed", &new_mode);
+                            match &cmd_result {
+                                CommandResult::ModeChanged(new_mode) => {
+                                    let _ = app.emit("mode_changed", new_mode);
+                                }
+                                CommandResult::EmergencyStopped => {
+                                    // The planner has already forced mode to Sleep.
+                                    // Stop audio capture, clear pending state, notify the UI.
+                                    log::warn!("Killswitch triggered");
+                                    let audio_state = app.state::<AudioState>();
+                                    audio_state.capture.lock().unwrap().stop();
+                                    pending_key_prefix = false;
+                                    let _ = app.emit("key_pending", false);
+                                    let _ = app.emit("mode_changed", &*mode);
+                                    let _ = app.emit("killswitch_triggered", ());
+                                }
+                                _ => {}
                             }
                         }
                         Err(e) => {

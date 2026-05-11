@@ -63,6 +63,10 @@ export async function stopListening(): Promise<void> {
   return invoke("stop_listening");
 }
 
+export async function reactivateAfterKillswitch(): Promise<AppMode> {
+  return invoke<AppMode>("reactivate_after_killswitch");
+}
+
 export async function getListeningStatus(): Promise<boolean> {
   return invoke<boolean>("get_listening_status");
 }

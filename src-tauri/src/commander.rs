@@ -12,11 +12,13 @@
 //! the variant), and handle it in [`execute`]. Tests target [`plan`] and the
 //! small mapping helpers — no mocking of subprocesses needed.
 
+#[cfg(not(test))]
 use std::process::Command;
 
 use serde::{Deserialize, Serialize};
 
 use crate::error::AppError;
+#[cfg(not(test))]
 use crate::injection;
 use crate::keywords::KeywordConfig;
 
@@ -107,6 +109,10 @@ pub enum Action {
     UnknownDictationAction(String),
     /// Verbatim text to type into the active window.
     TypeText(String),
+    /// Emergency stop: detected ahead of every other rule, in any mode
+    /// (including sleep). The executor reports it; lib.rs is responsible
+    /// for actually stopping audio capture and emitting the UI event.
+    EmergencyStop,
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -122,6 +128,9 @@ pub enum CommandResult {
     KeyPressed(String),
     Ignored,
     Sleeping,
+    /// Killswitch fired. lib.rs interprets this and stops audio capture
+    /// + emits the `killswitch_triggered` event.
+    EmergencyStopped,
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -141,6 +150,13 @@ pub fn plan(
     let text = strip_punctuation(text);
     if text.is_empty() {
         return (Action::Nothing, mode);
+    }
+
+    // Killswitch wins over every other rule, in any mode including sleep.
+    // Forces the assistant into Sleep so commands won't fire even if audio
+    // capture is restarted from the UI.
+    if is_killswitch(&text, keywords) {
+        return (Action::EmergencyStop, AppMode::Sleep);
     }
 
     let name = assistant_name.to_lowercase();
@@ -224,6 +240,20 @@ fn plan_terminal(text: &str, name: &str) -> Action {
         .map(str::trim)
         .unwrap_or(text);
     Action::TypeText(command_text.to_string())
+}
+
+/// Pure: does `text` contain the configured killswitch phrase?
+///
+/// Whitespace is collapsed on both sides so that a phrase configured as
+/// `"killswitch"` matches transcriptions like `"kill switch"`.
+fn is_killswitch(text: &str, keywords: &KeywordConfig) -> bool {
+    let kill = keywords.killswitch_phrase.to_lowercase();
+    if kill.is_empty() {
+        return false;
+    }
+    let collapsed_text: String = text.chars().filter(|c| !c.is_whitespace()).collect();
+    let collapsed_kill: String = kill.chars().filter(|c| !c.is_whitespace()).collect();
+    collapsed_text.contains(&collapsed_kill)
 }
 
 /// Pure: if `text` starts with the key-prefix (or one of its aliases) and the
@@ -443,6 +473,11 @@ impl CommandExecutor for RealExecutor {
                 injection::type_text(&text)?;
                 Ok(CommandResult::TextInjected(text))
             }
+
+            // Killswitch is detected in the planner; the real stop happens
+            // in lib.rs where the Tauri state for audio capture lives. The
+            // executor just reports it.
+            Action::EmergencyStop => Ok(CommandResult::EmergencyStopped),
         }
     }
 }
@@ -591,6 +626,7 @@ mod tests {
                 ("tab".into(), "Tab".into()),
                 ("escape".into(), "Escape".into()),
             ]),
+            killswitch_phrase: "killswitch".into(),
         }
     }
 
@@ -967,5 +1003,79 @@ mod tests {
     #[should_panic(expected = "RealExecutor::run() invoked in test build")]
     fn real_executor_panics_in_tests() {
         let _ = RealExecutor.run(Action::Nothing);
+    }
+
+    // ── Killswitch ────────────────────────────────────────────────────────
+
+    #[test]
+    fn killswitch_fires_in_every_mode() {
+        let kw = fixture_keywords();
+        for m in [
+            AppMode::Desktop,
+            AppMode::Dictation,
+            AppMode::Terminal,
+            AppMode::Sleep,
+        ] {
+            let (action, new_mode) = plan("killswitch", m, &kw, "pilot");
+            assert_eq!(action, Action::EmergencyStop, "mode={:?}", m);
+            assert_eq!(new_mode, AppMode::Sleep, "killswitch must force Sleep");
+        }
+    }
+
+    #[test]
+    fn killswitch_tolerates_whitespace_split() {
+        // Whisper sometimes splits compound words; the matcher collapses
+        // whitespace before comparing.
+        let kw = fixture_keywords();
+        let (action, _) = plan("kill switch", AppMode::Desktop, &kw, "pilot");
+        assert_eq!(action, Action::EmergencyStop);
+    }
+
+    #[test]
+    fn killswitch_as_substring_of_a_longer_utterance_fires() {
+        let kw = fixture_keywords();
+        let (action, _) = plan(
+            "Kaleo killswitch please now",
+            AppMode::Desktop,
+            &kw,
+            "kaleo",
+        );
+        assert_eq!(action, Action::EmergencyStop);
+    }
+
+    #[test]
+    fn killswitch_does_not_fire_without_phrase() {
+        let kw = fixture_keywords();
+        let (action, _) = plan("open firefox", AppMode::Desktop, &kw, "pilot");
+        assert_ne!(action, Action::EmergencyStop);
+    }
+
+    #[test]
+    fn killswitch_wins_over_sleep_mode_ignore() {
+        // In Sleep mode, arbitrary speech returns AsleepIgnored — but the
+        // killswitch must override that.
+        let kw = fixture_keywords();
+        let (action, new_mode) = plan("killswitch", AppMode::Sleep, &kw, "pilot");
+        assert_eq!(action, Action::EmergencyStop);
+        assert_eq!(new_mode, AppMode::Sleep);
+    }
+
+    #[test]
+    fn empty_killswitch_phrase_disables_detection() {
+        let mut kw = fixture_keywords();
+        kw.killswitch_phrase = String::new();
+        let (action, _) = plan("killswitch", AppMode::Desktop, &kw, "pilot");
+        // Falls through to desktop command lookup → unrecognized → Nothing
+        assert_ne!(action, Action::EmergencyStop);
+    }
+
+    #[test]
+    fn fake_executor_records_emergency_stop() {
+        let kw = fixture_keywords();
+        let mut mode = AppMode::Dictation;
+        let mut fake = FakeExecutor::new();
+        let _ = process_speech_with("Kaleo killswitch", &mut mode, &kw, "kaleo", &mut fake);
+        assert_eq!(fake.recorded, vec![Action::EmergencyStop]);
+        assert_eq!(mode, AppMode::Sleep);
     }
 }

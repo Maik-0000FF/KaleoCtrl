@@ -9,6 +9,7 @@
     setMode,
     loadSttModel,
     unloadSttModel,
+    reactivateAfterKillswitch,
     safeListen,
   } from "../lib/api";
   import AudioLevelMeter from "./AudioLevelMeter.svelte";
@@ -27,6 +28,8 @@
   let keyPending = $state(false);
   let modelLoading = $state(false);
   let modelError = $state("");
+  let killswitchActive = $state(false);
+  let killswitchTimer: ReturnType<typeof setTimeout> | null = null;
 
   async function refreshStatus() {
     try {
@@ -78,6 +81,17 @@
     }
   }
 
+  async function reactivate() {
+    try {
+      currentMode = await reactivateAfterKillswitch();
+      listening = true;
+      killswitchActive = false;
+      if (killswitchTimer) clearTimeout(killswitchTimer);
+    } catch (e) {
+      console.error("Failed to reactivate:", e);
+    }
+  }
+
   $effect(() => {
     refreshStatus();
     const interval = setInterval(refreshStatus, 2000);
@@ -105,18 +119,41 @@
       currentMode = event.payload;
     });
 
+    const offKillswitch = safeListen<null>("killswitch_triggered", () => {
+      killswitchActive = true;
+      listening = false;
+      if (killswitchTimer) clearTimeout(killswitchTimer);
+      killswitchTimer = setTimeout(() => {
+        killswitchActive = false;
+      }, 6000);
+    });
+
     return () => {
       clearInterval(interval);
+      if (killswitchTimer) clearTimeout(killswitchTimer);
       offKeyPending();
       offPartial();
       offTranscription();
       offMode();
+      offKillswitch();
     };
   });
 </script>
 
 <div class="panel">
   <h2>Status</h2>
+
+  {#if killswitchActive}
+    <div class="killswitch-banner" role="alert">
+      <span class="killswitch-icon" aria-hidden="true">■</span>
+      <div class="killswitch-text">
+        <strong>Killswitch ausgelöst</strong>
+        <span>Mic gestoppt, Mode auf Sleep. Mit „Reaktivieren" zurück in den Default-Mode.</span>
+      </div>
+      <button class="killswitch-reactivate" onclick={reactivate}>Reaktivieren</button>
+      <button class="killswitch-dismiss" onclick={() => (killswitchActive = false)} aria-label="Dismiss">×</button>
+    </div>
+  {/if}
 
   {#if config}
     <div class="status-grid">
@@ -425,5 +462,82 @@
 
   .loading {
     color: var(--text-muted);
+  }
+
+  .killswitch-banner {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 18px;
+    margin-bottom: 18px;
+    background: rgba(229, 57, 53, 0.12);
+    border: 1px solid #e53935;
+    border-radius: var(--radius);
+    animation: killswitch-pulse 0.6s ease-out;
+  }
+
+  .killswitch-icon {
+    font-size: 24px;
+    color: #e53935;
+    line-height: 1;
+  }
+
+  .killswitch-text {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .killswitch-text strong {
+    color: #e53935;
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  .killswitch-text span {
+    color: var(--text-secondary);
+    font-size: 12px;
+  }
+
+  .killswitch-reactivate {
+    background: #e53935;
+    color: #fff;
+    border: none;
+    border-radius: var(--radius);
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .killswitch-reactivate:hover {
+    background: #d32f2f;
+  }
+
+  .killswitch-dismiss {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 22px;
+    cursor: pointer;
+    padding: 0 6px;
+    line-height: 1;
+  }
+
+  .killswitch-dismiss:hover {
+    color: #e53935;
+  }
+
+  @keyframes killswitch-pulse {
+    from {
+      transform: scale(0.98);
+      opacity: 0;
+    }
+    to {
+      transform: scale(1);
+      opacity: 1;
+    }
   }
 </style>
