@@ -36,6 +36,5 @@ models/
 *.log
 
 # Private development (internal, not published)
-CLAUDE.md
 private/
 dev-notes/
