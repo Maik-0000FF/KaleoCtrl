@@ -10,6 +10,7 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/Maik-0000FF/KaleoCtrl/actions/workflows/ci.yml"><img src="https://github.com/Maik-0000FF/KaleoCtrl/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/status-early%20development-yellow" alt="Status">
   <img src="https://img.shields.io/badge/platform-Linux-blue" alt="Platform">
   <img src="https://img.shields.io/badge/backend-Rust%20%2F%20Tauri%20v2-orange" alt="Backend">
@@ -227,17 +228,24 @@ Microphone → Audio Capture (cpal) → Voice Activity Detection
                                    Streaming Transcriber
                                      (whisper.cpp FFI)
                                             ↓
-                                    Speech Recognition
+                                  Killswitch check ─── (emergency stop, any mode)
+                                            ↓
+                              Command Planner (pure, unit-testable)
+                                 text + mode + keywords → Action
+                                            ↓
+                                Command Executor (trait)
                                             ↓
                         ┌───────────────────┼───────────────────┐
                         ↓                   ↓                   ↓
-                  Command Parser      Key Command         Text Injection
-                  (open, close,     (keyboard + key)     (type into active
-                   switch, etc.)                           application)
+                  System Command      Key Command         Text Injection
+                  (open, close,      (key prefix +       (type into active
+                   switch, etc.)        key name)          application)
                         ↓                   ↓                   ↓
                   System Actions      Key Press Sim.      Text Output
                   (wmctrl, xdg)       (xdotool/wtype)    (wtype/xdotool)
 ```
+
+The planner (`commander::plan`) is pure: same input always produces the same output, no side effects, fully unit-tested. The executor is behind a `CommandExecutor` trait, allowing the planner to be exercised with a mock executor in tests.
 
 ### Speech Processing Pipeline
 
@@ -272,6 +280,18 @@ You assign a custom name to your assistant (default: *"Kaleo"*). This name acts 
 - In **sleep mode**: only `"<name> wake up"` is recognized
 
 This prevents false triggers — in dictation mode, saying *"open the file"* just types that text, while *"Kaleo open firefox"* executes the command.
+
+### Killswitch (Emergency Stop)
+
+If KaleoCtrl misbehaves — gets stuck waiting for a key, starts injecting unwanted text, or you simply want a hard stop — say the **killswitch phrase** (default: *"killswitch"*).
+
+It wins over every other rule, in **any mode including sleep**:
+- Audio capture stops immediately
+- Any pending key/dictation state is cleared
+- The assistant is forced into `sleep` mode so spurious commands won't fire if audio is restarted from the UI
+- The frontend receives a `killswitch_triggered` event for one-click recovery
+
+The phrase is per language, configured under `killswitch_phrase` in `keywords_<lang>.json`.
 
 ---
 
@@ -314,7 +334,6 @@ The install script detects your distribution and handles everything:
 # Prerequisites: git, curl
 git clone https://github.com/Maik-0000FF/KaleoCtrl.git
 cd KaleoCtrl
-chmod +x install.sh
 ./install.sh
 ```
 
@@ -326,6 +345,21 @@ The script offers three modes:
 Supported distributions: **Arch/EndeavourOS/Manjaro**, **Ubuntu/Debian/Mint**, **Fedora/Nobara**, **openSUSE**
 
 After installation, open **Settings > Model Manager** in the app to download a whisper model.
+
+### Uninstall
+
+A matching `uninstall.sh` is shipped alongside the installer:
+
+```bash
+./uninstall.sh
+```
+
+Three modes, all idempotent and prompted:
+1. **Standard** — removes the binary (`~/.local/bin/kaleoctrl`), icons, and desktop entry
+2. **Deep clean** — also offers to delete `models/`, `node_modules/`, `dist/`, and `src-tauri/target/` (each prompted individually)
+3. **Full wipe** — adds optional removal of `config/` and, with explicit warnings, the system packages installed by `install.sh`
+
+The uninstall script never touches your Rust toolchain or Node.js installation, and never deletes anything without an interactive confirmation.
 
 ### Manual Build
 
@@ -365,11 +399,16 @@ All config files live in `config/`:
 ### `config/keywords_<lang>.json`
 
 Contains per-language definitions for:
-- Mode names and descriptions
-- Control phrases (mode switch, wake/sleep, key prefix)
-- System command keywords
-- Dictation command keywords
-- Key command mappings
+- `language` — language code
+- `modes` — mode names and descriptions (`desktop`, `dictation`, `terminal`, `sleep`)
+- `mode_switch` — the word that triggers mode changes (e.g. *"mode"* / *"modus"*)
+- `wake_phrase` / `sleep_phrase` — wake/sleep the assistant
+- `killswitch_phrase` — emergency stop, recognized in any mode (default: *"killswitch"*)
+- `commands` — system command keywords (`open`, `close`, `switch`, `minimize`, `maximize`, `fullscreen`, `stop`, `undo`)
+- `dictation` — dictation control keywords (`new_line`, `new_paragraph`, `delete_word`, `delete_sentence`, `select_all`, `copy`, `paste`, `cut`)
+- `key_prefix` — word that activates key-press mode (default: *"key"* in en, *"keyboard"* in de)
+- `key_prefix_aliases` — additional words that also activate key-press mode
+- `keys` — mapping from spoken word to keyboard key name (e.g. `"enter" → "Return"`)
 
 ---
 
@@ -382,7 +421,7 @@ Contains per-language definitions for:
 - [ ] Plugin system for third-party integrations
 - [ ] Wayland-native text injection improvements
 - [ ] Audio device selection in GUI
-- [ ] Pre-built release binaries (deb/rpm/AppImage) via GitHub Actions CI
+- [ ] Pre-built release binaries (deb/rpm/AppImage) — release pipeline (CI for tests is already in place)
 
 ---
 
