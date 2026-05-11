@@ -95,7 +95,7 @@ pub enum Action {
     Undo,
     /// Command keyword whose action name isn't in the built-in set.
     /// Currently logged-only; reserved for user-defined commands later.
-    UnknownSystemAction { action: String, args: String },
+    UnrecognizedSystem { action: String, args: String },
     /// Single-key press, addressed via the key-prefix path
     /// (e.g. "taste enter" → `PressKey("Return")`).
     PressKey(String),
@@ -106,7 +106,7 @@ pub enum Action {
         keys: Vec<String>,
     },
     /// Dictation command name that isn't in the built-in set.
-    UnknownDictationAction(String),
+    UnrecognizedDictation(String),
     /// Verbatim text to type into the active window.
     TypeText(String),
     /// Emergency stop: detected ahead of every other rule, in any mode
@@ -338,7 +338,7 @@ fn system_action(action: &str, args: &str) -> Action {
         "fullscreen" => Action::FullscreenActiveWindow,
         "stop" => Action::StopCurrent,
         "undo" => Action::Undo,
-        _ => Action::UnknownSystemAction {
+        _ => Action::UnrecognizedSystem {
             action: action.to_string(),
             args,
         },
@@ -357,7 +357,7 @@ fn dictation_action(action: &str) -> Action {
         "copy" => vec!["ctrl+c"],
         "paste" => vec!["ctrl+v"],
         "cut" => vec!["ctrl+x"],
-        _ => return Action::UnknownDictationAction(action.to_string()),
+        _ => return Action::UnrecognizedDictation(action.to_string()),
     };
     Action::DictationKeys {
         action_name: action.to_string(),
@@ -452,7 +452,7 @@ impl CommandExecutor for RealExecutor {
                 Ok(CommandResult::SystemCommand("undo".into()))
             }
 
-            Action::UnknownSystemAction { action, args } => {
+            Action::UnrecognizedSystem { action, args } => {
                 log::info!("Custom system command: {} {}", action, args);
                 Ok(CommandResult::SystemCommand(format!("{} {}", action, args)))
             }
@@ -469,7 +469,7 @@ impl CommandExecutor for RealExecutor {
                 Ok(CommandResult::DictationAction(action_name))
             }
 
-            Action::UnknownDictationAction(name) => {
+            Action::UnrecognizedDictation(name) => {
                 log::info!("Custom dictation command: {}", name);
                 Ok(CommandResult::DictationAction(name))
             }
@@ -899,7 +899,7 @@ mod tests {
     fn system_action_unknown_falls_through_to_custom() {
         assert_eq!(
             system_action("salsa", "spicy"),
-            Action::UnknownSystemAction {
+            Action::UnrecognizedSystem {
                 action: "salsa".into(),
                 args: "spicy".into()
             }
@@ -918,7 +918,7 @@ mod tests {
     fn dictation_action_unknown_falls_through() {
         assert_eq!(
             dictation_action("groove"),
-            Action::UnknownDictationAction("groove".into())
+            Action::UnrecognizedDictation("groove".into())
         );
     }
 
