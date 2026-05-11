@@ -91,6 +91,11 @@ install_system_deps() {
             read -rp "Continue? [Y/n] " answer
             [[ "$answer" =~ ^[Nn] ]] && error "Installation cancelled."
 
+            # Refresh package database — on a system with stale DB,
+            # plain `pacman -S` fails with "target not found".
+            info "Refreshing package database (pacman -Sy)..."
+            sudo pacman -Sy --noconfirm
+
             sudo pacman -S --needed --noconfirm \
                 base-devel cmake pkg-config \
                 gtk3 webkit2gtk-4.1 libayatana-appindicator openssl \
