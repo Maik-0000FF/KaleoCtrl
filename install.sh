@@ -306,7 +306,9 @@ build_app() {
     info "This may take several minutes on first build (compiling whisper.cpp)..."
     echo ""
 
-    cargo tauri build 2>&1 | tail -5
+    if ! cargo tauri build; then
+        error "Build failed. See output above."
+    fi
 
     success "Build complete!"
 }
@@ -353,7 +355,10 @@ Type=Application
 EOF
 
     # Update icon cache
-    gtk-update-icon-cache "$HOME/.local/share/icons/hicolor/" 2>/dev/null || true
+    if has gtk-update-icon-cache; then
+        gtk-update-icon-cache "$HOME/.local/share/icons/hicolor/" 2>/dev/null \
+            || warn "GTK icon cache update failed (icons may appear after next login)"
+    fi
 
     success "Desktop integration installed"
     info "KaleoCtrl is now available in your application menu"
