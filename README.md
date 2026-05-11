@@ -86,7 +86,7 @@ Smaller models (`small`, quantized `q5_0`) are available for systems with less G
 - **Listening** — Toggle microphone capture. Green "Active" when recording
 - **Engine** — Currently loaded STT engine (whisper.cpp with streaming)
 - **Model** — Load/unload the whisper model. Shows model name when loaded
-- **Assistant** — Your custom wake word / command prefix (e.g. "prometheus")
+- **Assistant** — Your custom wake word / command prefix (e.g. "Kaleo")
 - **Language** — Active language for keyword matching
 - **Mic Level** — Real-time audio input level meter
 
@@ -109,7 +109,7 @@ All values update live. The status panel refreshes automatically every 2 seconds
 
 **Configure core application settings. All changes apply instantly — no save button, no restart.**
 
-- **Assistant Name** — The wake word that prefixes all voice commands (e.g. *"prometheus open firefox"*)
+- **Assistant Name** — The wake word that prefixes all voice commands (e.g. *"Kaleo open firefox"*)
 - **Language** — Active language for keyword recognition. Determines which keyword file is loaded
 - **STT Model** — Select which whisper.cpp model to use. Smaller models run faster on weaker hardware
 - **Default Mode** — The mode KaleoCtrl starts in after launch
@@ -257,21 +257,21 @@ Microphone → Audio Capture (cpal) → Voice Activity Detection
 | Mode | Behavior |
 |------|----------|
 | **Desktop** | System commands are active directly — say *"open firefox"* without any prefix |
-| **Dictation** | Pure speech-to-text. Everything you say gets typed. Commands require the assistant name as prefix (e.g. *"prometheus open firefox"*) |
+| **Dictation** | Pure speech-to-text. Everything you say gets typed. Commands require the assistant name as prefix (e.g. *"Kaleo open firefox"*) |
 | **Terminal** | Voice commands are sent to the terminal |
 | **Sleep** | KaleoCtrl is paused. Only listens for the wake phrase |
 
-Switch modes by saying: `"<assistant_name> mode <mode_name>"` — e.g. *"prometheus mode dictation"*
+Switch modes by saying: `"<assistant_name> mode <mode_name>"` — e.g. *"Kaleo mode dictation"*
 
 ### The Assistant Name
 
-You assign a custom name to your assistant (default: *"prometheus"*). This name acts as a **global command prefix** and works in every mode:
+You assign a custom name to your assistant (default: *"Kaleo"*). This name acts as a **global command prefix** and works in every mode:
 
 - In **desktop mode**: commands work with or without prefix
 - In **dictation mode**: the prefix distinguishes commands from dictated text
 - In **sleep mode**: only `"<name> wake up"` is recognized
 
-This prevents false triggers — in dictation mode, saying *"open the file"* just types that text, while *"prometheus open firefox"* executes the command.
+This prevents false triggers — in dictation mode, saying *"open the file"* just types that text, while *"Kaleo open firefox"* executes the command.
 
 ---
 
@@ -355,7 +355,7 @@ All config files live in `config/`:
 
 ```json
 {
-  "assistant_name": "prometheus",
+  "assistant_name": "Kaleo",
   "language": "de",
   "stt_model": "large-v3-turbo",
   "default_mode": "dictation"

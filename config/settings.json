@@ -1,5 +1,5 @@
 {
-  "assistant_name": "prometheus",
+  "assistant_name": "Kaleo",
   "language": "de",
   "stt_model": "large-v3-turbo",
   "default_mode": "dictation"
