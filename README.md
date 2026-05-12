@@ -23,6 +23,7 @@
   <a href="https://ko-fi.com/maik0000ff"><img src="https://img.shields.io/badge/Ko--fi-Support%20this%20project-ff5e5b?logo=ko-fi&logoColor=white&style=for-the-badge" alt="Ko-fi"></a>
 </p>
 
+> [!WARNING]
 > **Early Development** — This project is in an early stage. Features may change, break, or be incomplete. Contributions and feedback are welcome.
 
 ---
